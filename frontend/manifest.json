@@ -1,0 +1,13 @@
+{
+  "name": "친구야",
+  "short_name": "친구야",
+  "description": "같은 해를 살아온 친구를, 오늘의 기분과 지역으로 가볍게 연결해요",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDF3EC",
+  "theme_color": "#E28B4F",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

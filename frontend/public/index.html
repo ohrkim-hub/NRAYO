@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>너랑요 NRAYO</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+<meta name="theme-color" content="#E8825A" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ================= 온보딩 ================= -->
+  <section id="screen-onboarding" class="screen active" style="padding-top:60px;">
+    <div class="brand" style="font-size:28px;">너랑요<small>NRAYO · 아는 사람 말고, 내 사람</small></div>
+    <div class="hero-question" style="margin-top:28px;">오늘, 누구랑?</div>
+    <div class="hero-answer">"너랑요."</div>
+
+    <div class="card" style="margin-top:20px;">
+      <div class="field">
+        <label>휴대폰 번호 (본인인증)</label>
+        <input type="tel" id="ob-phone" placeholder="01012345678" />
+      </div>
+      <div class="field">
+        <label>출생연도</label>
+        <input type="number" id="ob-birthyear" placeholder="1995" />
+      </div>
+      <div class="field">
+        <label>지역</label>
+        <input type="text" id="ob-region" placeholder="예: 천안" />
+      </div>
+      <div class="field">
+        <label>닉네임 (최대 5글자)</label>
+        <input type="text" id="ob-nickname" maxlength="5" placeholder="제이" />
+      </div>
+      <div class="field">
+        <label>친구 목적 (복수 선택)</label>
+        <div class="chip-select" id="ob-purpose">
+          <div class="chip" data-v="동갑친구">동갑친구</div>
+          <div class="chip" data-v="동네친구">동네친구</div>
+          <div class="chip" data-v="취미친구">취미친구</div>
+          <div class="chip" data-v="카페">카페</div>
+          <div class="chip" data-v="맛집">맛집</div>
+          <div class="chip" data-v="운동">운동</div>
+          <div class="chip" data-v="여행">여행</div>
+          <div class="chip" data-v="외국인친구">외국인친구</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>관심사 (복수 선택)</label>
+        <div class="chip-select" id="ob-interests">
+          <div class="chip" data-v="커피">커피</div>
+          <div class="chip" data-v="사진">사진</div>
+          <div class="chip" data-v="맛집탐방">맛집탐방</div>
+          <div class="chip" data-v="운동">운동</div>
+          <div class="chip" data-v="영화">영화</div>
+          <div class="chip" data-v="여행">여행</div>
+          <div class="chip" data-v="게임">게임</div>
+          <div class="chip" data-v="독서">독서</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="NRAYO.signup()">시작하기</button>
+    </div>
+    <p class="muted" style="text-align:center;margin-top:14px;">가입 시 약관 및 개인정보 처리방침에 동의합니다.</p>
+  </section>
+
+  <!-- ================= 메인 앱 (탭) ================= -->
+  <div id="main-app" style="display:none; flex:1; display:none; flex-direction:column;">
+    <div class="topbar">
+      <div class="brand">너랑요<small id="me-nickname-label">NRAYO</small></div>
+      <div class="stars-badge">⭐ <span id="star-count">0</span></div>
+    </div>
+
+    <!-- ---- TODAY ---- -->
+    <section id="screen-today" class="screen active">
+      <div class="hero-question">오늘, 누구랑?</div>
+      <div class="hero-answer">오늘의 2명이에요</div>
+      <div id="today-list"></div>
+    </section>
+
+    <!-- ---- QUIZ (상대 알아가기) ---- -->
+    <section id="screen-quiz" class="screen">
+      <div class="section-title">이 사람 알아보기</div>
+      <div class="card">
+        <div id="quiz-target-name" style="font-weight:800; font-size:16px; margin-bottom:4px;"></div>
+        <div id="quiz-state" class="state-pill" style="margin-bottom:14px;"></div>
+        <div id="quiz-question-area"></div>
+      </div>
+      <button class="btn btn-ghost" onclick="NRAYO.showScreen('today')">← Today's 2로 돌아가기</button>
+    </section>
+
+    <!-- ---- TRIO ---- -->
+    <section id="screen-trio" class="screen">
+      <div class="hero-question">TRIO</div>
+      <div class="hero-answer">3명으로 시작해서 진짜 5명이 됩니다</div>
+      <div id="trio-list"></div>
+      <div class="card" style="margin-top:10px;">
+        <div class="section-title" style="margin-top:0;">친구 목록에서 TRIO 만들기</div>
+        <div id="friend-picker" class="chip-select"></div>
+        <button class="btn btn-primary" style="margin-top:12px;" onclick="NRAYO.createTrio()">선택한 친구들과 TRIO 시작</button>
+      </div>
+    </section>
+
+    <!-- ---- TRIO ROOM ---- -->
+    <section id="screen-trio-room" class="screen">
+      <button class="btn btn-ghost btn-sm" onclick="NRAYO.showScreen('trio')" style="margin-bottom:10px;">← TRIO 목록</button>
+      <div class="card" id="trio-room-messages" style="min-height:200px;"></div>
+      <div class="card">
+        <div class="section-title" style="margin-top:0;">관계 게임</div>
+        <div class="game-card"><b>SAME 5</b> — 공통점 5개 찾기 [이 답으로 대화하기]</div>
+        <div class="game-card"><b>WHO'S THIS?</b> — 어린 시절 사진 맞히기 [이 답으로 대화하기]</div>
+      </div>
+      <div class="field" style="display:flex; gap:8px;">
+        <input type="text" id="trio-msg-input" placeholder="메시지 보내기" style="flex:1;" />
+        <button class="btn btn-primary btn-sm" onclick="NRAYO.sendTrioMessage()">전송</button>
+      </div>
+    </section>
+
+    <!-- ---- MEET ---- -->
+    <section id="screen-meet" class="screen">
+      <div class="hero-question">MEET</div>
+      <div class="hero-answer">실제로 만나요</div>
+      <div class="card">
+        <div class="section-title" style="margin-top:0;">모임 만들기</div>
+        <div class="field"><label>목적</label><input type="text" id="meet-purpose" placeholder="커피"/></div>
+        <div class="field"><label>날짜/시간</label><input type="datetime-local" id="meet-datetime"/></div>
+        <div class="field"><label>인원</label><input type="number" id="meet-capacity" value="3"/></div>
+        <button class="btn btn-primary" onclick="NRAYO.createMeet()">모임 만들기</button>
+      </div>
+      <div id="meet-list"></div>
+    </section>
+
+    <!-- ---- ME ---- -->
+    <section id="screen-me" class="screen">
+      <div class="hero-question">MY 5</div>
+      <div class="hero-answer">진짜 친구 다섯이면 충분하다</div>
+      <div class="card" id="me-summary"></div>
+      <div class="section-title">Safety</div>
+      <div class="card">
+        <button class="btn btn-outline" onclick="alert('신고는 상대 프로필 화면에서 진행합니다.')">신고 방법 안내</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="tabbar" id="tabbar" style="display:none;">
+    <button class="tab-btn active" data-tab="today" onclick="NRAYO.showScreen('today')"><span>TODAY</span></button>
+    <button class="tab-btn" data-tab="trio" onclick="NRAYO.showScreen('trio')"><span>TRIO</span></button>
+    <button class="tab-btn" data-tab="meet" onclick="NRAYO.showScreen('meet')"><span>MEET</span></button>
+    <button class="tab-btn" data-tab="me" onclick="NRAYO.showScreen('me')"><span>ME</span></button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

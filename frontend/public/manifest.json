@@ -1,0 +1,12 @@
+{
+  "name": "너랑요 NRAYO",
+  "short_name": "너랑요",
+  "description": "아는 사람 말고, 내 사람. 오늘, 누구랑?",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#FFF3E9",
+  "theme_color": "#E8825A",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

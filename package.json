@@ -1,0 +1,19 @@
+{
+  "name": "chinguya-backend",
+  "version": "0.1.0",
+  "description": "친구야 - 동갑 지역 소셜 매칭 앱 백엔드",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "firebase-admin": "^12.1.0",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
