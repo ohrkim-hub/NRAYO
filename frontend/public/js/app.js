@@ -1,9 +1,7 @@
-
-App · JS
 // 너랑요 (NRAYO) 프론트엔드 - P0 스캐폴드
 // 백엔드 API_BASE는 배포 환경에 맞게 교체 (로컬 개발 시 http://localhost:8080)
-const API_BASE = window.NRAYO_API_BASE || 'https://nrayo-backend-761047791567.asia-northeast3.run.app';
- 
+const API_BASE = window.NRAYO_API_BASE || 'http://localhost:8080';
+
 const state = {
   userId: null,
   nickname: null,
@@ -14,14 +12,14 @@ const state = {
   currentQuizTarget: null,
   currentTrioRoom: null
 };
- 
+
 function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2200);
 }
- 
+
 async function api(path, method = 'GET', body) {
   const res = await fetch(API_BASE + path, {
     method,
@@ -32,7 +30,7 @@ async function api(path, method = 'GET', body) {
   if (!res.ok) throw new Error(data.error || '요청 실패');
   return data;
 }
- 
+
 function setupChips(containerId, targetSet) {
   const container = document.getElementById(containerId);
   container.querySelectorAll('.chip').forEach(chip => {
@@ -43,33 +41,33 @@ function setupChips(containerId, targetSet) {
     });
   });
 }
- 
+
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById('screen-' + name);
   if (el) el.classList.add('active');
- 
+
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   const tabBtn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
   if (tabBtn) tabBtn.classList.add('active');
- 
+
   if (name === 'today') loadToday();
   if (name === 'trio') loadTrioList();
   if (name === 'me') loadMe();
 }
- 
+
 // ---------------- 온보딩 ----------------
 async function signup() {
   const phone = document.getElementById('ob-phone').value.trim();
   const birthYear = document.getElementById('ob-birthyear').value.trim();
   const region = document.getElementById('ob-region').value.trim();
   const nickname = document.getElementById('ob-nickname').value.trim();
- 
+
   if (!phone || !birthYear || !region || !nickname) {
     toast('필수 항목을 모두 입력해주세요');
     return;
   }
- 
+
   try {
     const result = await api('/auth/signup', 'POST', {
       phone, birthYear, region, nickname,
@@ -88,7 +86,7 @@ async function signup() {
     toast(e.message);
   }
 }
- 
+
 // ---------------- TODAY'S 2 ----------------
 async function loadToday() {
   if (!state.userId) return;
@@ -102,7 +100,7 @@ async function loadToday() {
     list.innerHTML = data.candidates.map(c => renderPersonCard(c)).join('');
   } catch (e) { toast(e.message); }
 }
- 
+
 function renderPersonCard(c) {
   const stateLabel = {
     LOCKED: '알아가기 전',
@@ -110,15 +108,15 @@ function renderPersonCard(c) {
     REVEALED: '사진 공개됨',
     FRIENDABLE: '친구신청 가능'
   }[c.profileState] || c.profileState;
- 
+
   const photoBlock = c.photoUrl
     ? `<img src="${c.photoUrl}" style="width:100%;height:100%;object-fit:cover;" />`
     : `<span class="lock-icon" style="font-size:34px;">🔒</span>`;
- 
+
   const actionBtn = (c.profileState === 'FRIENDABLE')
     ? `<button class="btn btn-primary btn-sm" onclick="sendFriendRequest('${c.userId}','${c.nickname}')">친구신청</button>`
     : `<button class="btn btn-outline btn-sm" onclick="openQuiz('${c.userId}','${c.nickname}')">이 사람 알아보기</button>`;
- 
+
   return `
   <div class="person-card">
     <div class="person-photo">
@@ -133,7 +131,7 @@ function renderPersonCard(c) {
     </div>
   </div>`;
 }
- 
+
 // ---------------- QUIZ ----------------
 async function openQuiz(targetUserId, nickname) {
   state.currentQuizTarget = { userId: targetUserId, nickname };
@@ -141,7 +139,7 @@ async function openQuiz(targetUserId, nickname) {
   showScreen('quiz');
   await renderNextQuizQuestion();
 }
- 
+
 async function renderNextQuizQuestion() {
   const questions = await api('/quiz/questions');
   const q = questions[Math.floor(Math.random() * questions.length)];
@@ -152,7 +150,7 @@ async function renderNextQuizQuestion() {
     ${q.choices.map(ch => `<button class="quiz-choice" onclick="answerQuiz('${q.id}', '${ch}')">${ch}</button>`).join('')}
   `;
 }
- 
+
 async function answerQuiz(questionId, choice) {
   const target = state.currentQuizTarget;
   try {
@@ -161,7 +159,7 @@ async function answerQuiz(questionId, choice) {
     });
     document.getElementById('quiz-state').textContent =
       `알아본 횟수 ${result.attemptCount}/${result.unlockThreshold} · 상태: ${result.profileState}`;
- 
+
     if (result.profileState === 'FRIENDABLE') {
       toast(`${target.nickname}님의 프로필이 공개됐어요!`);
       document.getElementById('quiz-question-area').innerHTML =
@@ -172,7 +170,7 @@ async function answerQuiz(questionId, choice) {
     }
   } catch (e) { toast(e.message); }
 }
- 
+
 // ---------------- 친구신청 / 수락 (프로토타입: 단일 사용자 데모용 즉시수락 버튼 제공) ----------------
 async function sendFriendRequest(targetUserId, nickname) {
   try {
@@ -188,7 +186,7 @@ async function sendFriendRequest(targetUserId, nickname) {
     }
   } catch (e) { toast(e.message); }
 }
- 
+
 // ---------------- TRIO ----------------
 async function loadTrioList() {
   const picker = document.getElementById('friend-picker');
@@ -202,7 +200,7 @@ async function loadTrioList() {
       chip.addEventListener('click', () => chip.classList.toggle('selected'));
     });
   }
- 
+
   const list = document.getElementById('trio-list');
   if (state.currentTrioRoom) {
     list.innerHTML = `<div class="card">
@@ -213,7 +211,7 @@ async function loadTrioList() {
     list.innerHTML = '';
   }
 }
- 
+
 async function createTrio() {
   const picked = Array.from(document.querySelectorAll('#friend-picker .chip.selected')).map(c => c.dataset.friend);
   if (picked.length < 2) {
@@ -227,13 +225,13 @@ async function createTrio() {
     openTrioRoom(result.roomId);
   } catch (e) { toast(e.message); }
 }
- 
+
 async function openTrioRoom(roomId) {
   state.currentTrioRoom = roomId;
   showScreen('trio-room');
   await refreshTrioRoom();
 }
- 
+
 async function refreshTrioRoom() {
   const data = await api(`/trio/${state.currentTrioRoom}`);
   const box = document.getElementById('trio-room-messages');
@@ -247,7 +245,7 @@ async function refreshTrioRoom() {
       </div>`).join('');
   }
 }
- 
+
 async function sendTrioMessage() {
   const input = document.getElementById('trio-msg-input');
   const text = input.value.trim();
@@ -258,14 +256,14 @@ async function sendTrioMessage() {
     await refreshTrioRoom();
   } catch (e) { toast(e.message); }
 }
- 
+
 // ---------------- MEET ----------------
 async function createMeet() {
   const purpose = document.getElementById('meet-purpose').value.trim();
   const dateTime = document.getElementById('meet-datetime').value;
   const capacity = document.getElementById('meet-capacity').value;
   if (!purpose || !dateTime) { toast('목적과 날짜/시간을 입력해주세요'); return; }
- 
+
   try {
     const result = await api('/meets/create', 'POST', {
       hostUserId: state.userId, region: '천안', distanceKm: 10,
@@ -275,7 +273,7 @@ async function createMeet() {
     renderMeet(result.meet);
   } catch (e) { toast(e.message); }
 }
- 
+
 function renderMeet(meet) {
   const list = document.getElementById('meet-list');
   const div = document.createElement('div');
@@ -284,7 +282,7 @@ function renderMeet(meet) {
     <div class="muted">${meet.dateTime}</div>`;
   list.prepend(div);
 }
- 
+
 // ---------------- ME ----------------
 async function loadMe() {
   if (!state.userId) return;
@@ -297,22 +295,19 @@ async function loadMe() {
     <div style="margin-top:14px;" class="muted">친구 ${state.friends.length}명 · Meet 참여 ${data.user.meetJoined}회</div>
   `;
 }
- 
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });
 }
- 
+
 setupChips('ob-purpose', state.purpose);
 setupChips('ob-interests', state.interests);
- 
+
 window.NRAYO = { signup, showScreen, sendFriendRequest, openQuiz, answerQuiz, createTrio, sendTrioMessage, createMeet };
 window.sendFriendRequest = sendFriendRequest;
 window.openQuiz = openQuiz;
 window.answerQuiz = answerQuiz;
 window.showScreen = showScreen;
 window.openTrioRoom = openTrioRoom;
- 
-
-
