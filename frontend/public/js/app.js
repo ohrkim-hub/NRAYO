@@ -77,6 +77,25 @@ function showScreen(name) {
   if (name === 'me') loadMe();
 }
 
+// ---------------- 관리자로 바로 앱 진입 ----------------
+async function adminLogin() {
+  const key = prompt('관리자 키를 입력해주세요');
+  if (!key) return;
+  try {
+    const result = await api('/auth/admin-login', 'POST', { key });
+    state.userId = result.userId;
+    state.nickname = result.nickname;
+    document.getElementById('me-nickname-label').textContent = result.nickname + '님';
+    document.getElementById('screen-onboarding').classList.remove('active');
+    document.getElementById('main-app').style.display = 'flex';
+    document.getElementById('tabbar').style.display = 'flex';
+    toast('관리자로 입장했어요 (별 무한)');
+    loadToday();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 // ---------------- 구글 로그인 ----------------
 async function signInWithGoogle() {
   try {
@@ -202,8 +221,16 @@ async function sendVerifyCode() {
     document.getElementById('ob-code').value = '';
     document.getElementById('ob-cta-2').disabled = true;
 
-    // 실제 SMS 벤더 연동 전까지 임시로 인증번호를 화면에 안내 (실서비스 배포 시 반드시 제거할 것)
-    toast(`[테스트용] 인증번호: ${result.devCode}`);
+    // 실제 SMS 벤더 연동 전까지 임시로 인증번호를 화면에 계속 보이게 안내 (실서비스 배포 시 반드시 제거할 것)
+    let devCodeEl = document.getElementById('dev-code-hint');
+    if (!devCodeEl) {
+      devCodeEl = document.createElement('div');
+      devCodeEl.id = 'dev-code-hint';
+      devCodeEl.className = 'state-pill';
+      devCodeEl.style.marginTop = '10px';
+      document.getElementById('verify-code-area').appendChild(devCodeEl);
+    }
+    devCodeEl.innerHTML = `[테스트용] 인증번호: <b>${result.devCode}</b> <span style="text-decoration:underline; cursor:pointer;" onclick="document.getElementById('ob-code').value='${result.devCode}'; document.getElementById('ob-cta-2').disabled=false;">(자동입력)</span>`;
 
     let remain = 180;
     if (verifyTimerInterval) clearInterval(verifyTimerInterval);
@@ -799,7 +826,7 @@ window.NRAYO = {
   obNext, obPrev, sendVerifyCode, confirmVerifyCode, previewPhoto,
   saveContacts, skipContacts, rateManner,
   leaveTrioRoom, proposeCasual, showGame, submitSame5, setWhosThis, guessWhosThis,
-  loadExtraCandidates, chargeStars, signInWithGoogle
+  loadExtraCandidates, chargeStars, signInWithGoogle, adminLogin
 };
 window.sendFriendRequest = sendFriendRequest;
 window.openQuiz = openQuiz;
