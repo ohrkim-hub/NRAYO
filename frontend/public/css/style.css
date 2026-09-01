@@ -334,3 +334,215 @@ html, body {
   margin: 18px 0 10px;
 }
 .muted { color: var(--text-soft); font-size: 13px; }
+
+/* ---------- 온보딩 (단계별, 당근마켓 스타일) ---------- */
+.ob-progress {
+  height: 3px;
+  background: var(--line);
+  margin: 0;
+}
+.ob-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.ob-back {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  font-size: 16px;
+  color: var(--text);
+  cursor: pointer;
+  z-index: 30;
+}
+.ob-step {
+  display: none;
+  flex-direction: column;
+  min-height: calc(100vh - 3px);
+  padding: 70px 24px 30px;
+}
+.ob-step.active { display: flex; }
+.ob-emoji { font-size: 44px; margin-bottom: 6px; }
+.ob-title {
+  font-size: 25px;
+  font-weight: 800;
+  line-height: 1.35;
+  letter-spacing: -0.5px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.ob-desc {
+  font-size: 14px;
+  color: var(--text-soft);
+  margin-bottom: 30px;
+}
+.ob-input {
+  width: 100%;
+  border: none;
+  border-bottom: 2px solid var(--line);
+  background: transparent;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  padding: 8px 2px 14px;
+}
+.ob-input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+.ob-input::placeholder { color: #C9B4A8; font-weight: 500; }
+.ob-chip-select { display: flex; flex-wrap: wrap; gap: 10px; }
+.ob-chip-select .chip { padding: 11px 16px; font-size: 14px; }
+.ob-spacer { flex: 1; }
+.ob-cta { margin-top: 10px; }
+.ob-cta:disabled { background: var(--line); color: var(--text-soft); }
+
+/* ---------- 구글 로그인 버튼 ---------- */
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  background: #fff;
+  color: #3c4043;
+  border: 1.5px solid #dadce0;
+  border-radius: var(--radius-sm);
+  padding: 13px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-google:active { transform: scale(0.98); }
+.google-icon {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #4285F4;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ob-textarea {
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  min-height: 100px;
+  resize: none;
+  font-family: inherit;
+}
+.ob-textarea:focus { border-color: var(--accent); }
+
+/* ---------- 약관동의 ---------- */
+.terms-box {
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 4px;
+}
+.terms-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+.terms-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.terms-all { font-weight: 800; font-size: 15px; }
+.terms-line { height: 1px; background: var(--line); margin: 2px 10px; }
+.terms-view {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-soft);
+  text-decoration: underline;
+}
+
+/* ---------- 사진 업로드 ---------- */
+.photo-upload-box {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: 2px dashed var(--line);
+  background: var(--surface-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  margin: 10px auto 0;
+}
+.photo-upload-box img { width: 100%; height: 100%; object-fit: cover; }
+#photo-placeholder {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-dark);
+  line-height: 1.6;
+}
+
+/* ---------- 프롬프트 자기소개 ---------- */
+.prompt-select {
+  font-size: 15px;
+  font-weight: 700;
+  background: var(--surface-soft);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  color: var(--accent-dark);
+  appearance: none;
+}
+
+/* ---------- 목적 아이콘 뱃지 ---------- */
+.purpose-icon-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.purpose-icon-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+
+/* ---------- 매너 평점 뱃지 ---------- */
+.manner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-dark);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+/* ---------- 지인 피하기 카드 ---------- */
+.contacts-card { text-align: left; }
+.contacts-card textarea {
+  width: 100%;
+  min-height: 70px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+}

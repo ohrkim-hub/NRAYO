@@ -1,74 +1,126 @@
 const express = require('express');
 const { nanoid } = require('nanoid');
-const { loadDB, saveDB } = require('../data/store');
+const repo = require('../data/repo');
+const { bucket } = require('../data/firestore');
 
 const router = express.Router();
 
-// 회원가입 (휴대폰 본인인증은 실제로는 외부 벤더 연동 필요 - 여기선 인증완료를 가정한 스텁)
 // POST /auth/signup
-// body: { phone, birthYear, region, nickname, interests: [], purpose: [] }
-router.post('/signup', (req, res) => {
-  const { phone, birthYear, region, nickname, interests = [], purpose = [] } = req.body;
+router.post('/signup', async (req, res) => {
+  try {
+    const {
+      phone, birthYear, region, nickname, gender = '선택안함', bio = '', prompts = [],
+      interests = [], purpose = [], termsAgreed = false, googleUid = null, googleEmail = null
+    } = req.body;
 
-  if (!phone || !birthYear || !region || !nickname) {
-    return res.status(400).json({ error: 'phone, birthYear, region, nickname은 필수입니다.' });
+    if (!phone || !birthYear || !region || !nickname) {
+      return res.status(400).json({ error: 'phone, birthYear, region, nickname은 필수입니다.' });
+    }
+    if (!termsAgreed) {
+      return res.status(400).json({ error: '필수 약관에 동의해주세요.' });
+    }
+    if (nickname.length > 5) {
+      return res.status(400).json({ error: '닉네임은 최대 5글자입니다.' });
+    }
+    const age = new Date().getFullYear() - Number(birthYear);
+    if (age < 14) {
+      return res.status(400).json({ error: '연령 요건을 충족하지 않습니다.' });
+    }
+
+    const phoneVerified = await repo.isPhoneVerified(phone);
+    if (!phoneVerified) {
+      return res.status(400).json({ error: '휴대폰 본인인증을 먼저 완료해주세요.' });
+    }
+
+    const existing = await repo.findUserByPhone(phone);
+    if (existing) {
+      return res.status(409).json({ error: '이미 가입된 휴대폰 번호입니다.', userId: existing.id });
+    }
+    if (googleUid) {
+      const existingGoogle = await repo.findUserByGoogleUid(googleUid);
+      if (existingGoogle) {
+        return res.status(409).json({ error: '이미 이 구글 계정으로 가입되어 있습니다.', userId: existingGoogle.id });
+      }
+    }
+
+    const userId = nanoid();
+    const now = new Date().toISOString();
+
+    const user = {
+      id: userId, phone, birthYear: Number(birthYear), region, nickname, gender,
+      googleUid, googleEmail,
+      verified: true, createdAt: now, banned: false, isAdmin: false,
+      meetJoined: 0, meetCompleted: 0, lateCancelCount: 0, noShowCount: 0,
+      attendanceRate: 100, penaltyLevel: 0, stars: 5
+    };
+    await repo.createUser(userId, user);
+
+    const profile = { userId, interests, purpose, bio, prompts, photoUrl: null, state: 'LOCKED' };
+    await repo.createProfile(userId, profile);
+
+    res.status(201).json({ userId, message: '회원가입 완료' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
   }
-  if (nickname.length > 5) {
-    return res.status(400).json({ error: '닉네임은 최대 5글자입니다.' });
-  }
-
-  const age = new Date().getFullYear() - Number(birthYear);
-  if (age < 14) {
-    return res.status(400).json({ error: '연령 요건을 충족하지 않습니다.' });
-  }
-
-  const db = loadDB();
-
-  const existing = Object.values(db.users).find(u => u.phone === phone);
-  if (existing) {
-    return res.status(409).json({ error: '이미 가입된 휴대폰 번호입니다.', userId: existing.id });
-  }
-
-  const userId = nanoid();
-  const now = new Date().toISOString();
-
-  db.users[userId] = {
-    id: userId,
-    phone,
-    birthYear: Number(birthYear),
-    region,
-    nickname,
-    verified: true, // 본인인증 완료 가정
-    createdAt: now,
-    meetJoined: 0,
-    meetCompleted: 0,
-    lateCancelCount: 0,
-    noShowCount: 0,
-    attendanceRate: 100,
-    penaltyLevel: 0,
-    stars: 5 // 인앱 재화(임시명 "별") 초기 지급
-  };
-
-  db.profiles[userId] = {
-    userId,
-    interests,
-    purpose,
-    bio: '',
-    photoUrl: null,
-    state: 'LOCKED' // LOCKED -> DISCOVERING -> REVEALED -> FRIENDABLE -> CONNECTED -> DM_OPEN
-  };
-
-  saveDB(db);
-  res.status(201).json({ userId, message: '회원가입 완료' });
 });
 
 // GET /auth/me/:userId
-router.get('/me/:userId', (req, res) => {
-  const db = loadDB();
-  const user = db.users[req.params.userId];
-  if (!user) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
-  const profile = db.profiles[req.params.userId];
-  res.json({ user, profile });
+router.get('/me/:userId', async (req, res) => {
+  try {
+    const user = await repo.getUser(req.params.userId);
+    if (!user) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+    const profile = await repo.getProfile(req.params.userId);
+    res.json({ user, profile });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
+// POST /auth/photo  body: { userId, imageBase64 } (data URL, 예: "data:image/jpeg;base64,...")
+router.post('/photo', async (req, res) => {
+  try {
+    if (!bucket) return res.status(503).json({ error: '사진 업로드 기능이 아직 설정되지 않았어요. (Storage 초기화 실패)' });
+
+    const { userId, imageBase64 } = req.body;
+    if (!userId || !imageBase64) return res.status(400).json({ error: 'userId, imageBase64는 필수입니다.' });
+
+    const user = await repo.getUser(userId);
+    if (!user) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+
+    const matches = imageBase64.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!matches) return res.status(400).json({ error: '올바른 이미지 데이터가 아닙니다.' });
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+
+    if (buffer.length > 5 * 1024 * 1024) {
+      return res.status(400).json({ error: '이미지 용량은 5MB 이하로 올려주세요.' });
+    }
+
+    const ext = contentType.split('/')[1] || 'jpg';
+    const file = bucket.file(`profiles/${userId}.${ext}`);
+    await file.save(buffer, { metadata: { contentType }, public: true });
+    const photoUrl = `https://storage.googleapis.com/${bucket.name}/profiles/${userId}.${ext}`;
+
+    await repo.updateProfile(userId, { photoUrl });
+    res.json({ photoUrl });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '사진 업로드 중 오류가 발생했습니다. (Storage 권한 설정이 필요할 수 있어요)' });
+  }
+});
+
+// GET /auth/by-google/:googleUid - 구글 로그인 시 기존 가입 여부 확인
+router.get('/by-google/:googleUid', async (req, res) => {
+  try {
+    const user = await repo.findUserByGoogleUid(req.params.googleUid);
+    if (!user) return res.status(404).json({ error: '가입된 계정이 없습니다.' });
+    res.json({ userId: user.id, nickname: user.nickname });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
 });
 
 module.exports = router;

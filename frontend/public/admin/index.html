@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>너랑요 관리자</title>
+<link rel="stylesheet" href="../css/style.css" />
+<style>
+  body { background: var(--bg); }
+  .admin-wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 60px; }
+  .admin-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  .admin-title { font-size:20px; font-weight:800; color:var(--accent-dark); }
+  table { width:100%; border-collapse: collapse; background:var(--surface); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); }
+  th, td { text-align:left; padding:10px 12px; font-size:13px; border-bottom:1px solid var(--line); }
+  th { background:var(--surface-soft); color:var(--accent-dark); font-weight:700; }
+  tr:last-child td { border-bottom:none; }
+  .badge-banned { background:#fde2e1; color:#c0392b; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:700; }
+  .badge-active { background:#e2f5e1; color:#2e7d32; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:700; }
+  .tabs { display:flex; gap:10px; margin-bottom:16px; }
+  .tab { padding:8px 16px; border-radius:999px; background:var(--surface); border:1px solid var(--line); font-size:13px; font-weight:700; cursor:pointer; color:var(--text-soft); }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .login-box { max-width:340px; margin: 100px auto; text-align:center; }
+</style>
+</head>
+<body>
+<div class="admin-wrap">
+
+  <div id="admin-login" class="login-box">
+    <div class="brand" style="font-size:22px; justify-content:center;">너랑요 관리자</div>
+    <div class="field" style="margin-top:20px; text-align:left;">
+      <label>관리자 키</label>
+      <input type="password" id="admin-key-input" placeholder="관리자 키 입력" />
+    </div>
+    <button class="btn btn-primary" onclick="Admin.login()">로그인</button>
+  </div>
+
+  <div id="admin-dashboard" style="display:none;">
+    <div class="admin-header">
+      <div class="admin-title">너랑요 관리자</div>
+      <button class="btn btn-ghost btn-sm" onclick="Admin.logout()">로그아웃</button>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="users" onclick="Admin.switchTab('users')">회원 (<span id="count-users">0</span>)</div>
+      <div class="tab" data-tab="reports" onclick="Admin.switchTab('reports')">신고 (<span id="count-reports">0</span>)</div>
+    </div>
+
+    <div id="tab-users">
+      <table>
+        <thead><tr><th>닉네임</th><th>지역</th><th>출생연도</th><th>가입일</th><th>상태</th><th>관리자</th><th>조치</th></tr></thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="tab-reports" style="display:none;">
+      <table>
+        <thead><tr><th>사유</th><th>신고자</th><th>대상</th><th>일시</th><th>상태</th><th>조치</th></tr></thead>
+        <tbody id="reports-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+<script src="admin.js"></script>
+</body>
+</html>
