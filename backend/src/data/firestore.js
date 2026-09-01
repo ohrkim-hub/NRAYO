@@ -9,7 +9,7 @@ const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT
 if (!admin.apps.length) {
   admin.initializeApp({
     projectId,
-    storageBucket: `${projectId}.appspot.com`
+    storageBucket: process.env.STORAGE_BUCKET || 'nrayo-3c940.firebasestorage.app'
   });
 }
 
