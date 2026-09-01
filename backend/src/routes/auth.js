@@ -5,6 +5,44 @@ const { bucket } = require('../data/firestore');
 
 const router = express.Router();
 
+const ADMIN_KEY = process.env.ADMIN_KEY || 'nrayo-admin-2026';
+
+// POST /auth/admin-login  body: { key }
+// 관리자 키만 입력하면 가입 절차 없이 바로 앱에 진입 (전용 관리자 테스트 계정 자동 생성/재사용, 무한 별)
+router.post('/admin-login', async (req, res) => {
+  try {
+    const { key } = req.body;
+    if (key !== ADMIN_KEY) return res.status(401).json({ error: '관리자 키가 올바르지 않습니다.' });
+
+    const ADMIN_PHONE = '01000000000';
+    let user = await repo.findUserByPhone(ADMIN_PHONE);
+
+    if (!user) {
+      const userId = nanoid();
+      const now = new Date().toISOString();
+      user = {
+        id: userId, phone: ADMIN_PHONE, birthYear: 2000, region: '천안', nickname: '관리자',
+        gender: '선택안함', googleUid: null, googleEmail: null,
+        verified: true, createdAt: now, banned: false, isAdmin: true,
+        meetJoined: 0, meetCompleted: 0, lateCancelCount: 0, noShowCount: 0,
+        attendanceRate: 100, penaltyLevel: 0, stars: 999
+      };
+      await repo.createUser(userId, user);
+      await repo.createProfile(userId, {
+        userId, interests: ['커피', '여행'], purpose: ['동갑친구'], bio: '',
+        prompts: [], photoUrl: null, state: 'LOCKED'
+      });
+    } else if (!user.isAdmin) {
+      await repo.updateUser(user.id, { isAdmin: true });
+    }
+
+    res.json({ userId: user.id, nickname: user.nickname });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
 // POST /auth/signup
 router.post('/signup', async (req, res) => {
   try {

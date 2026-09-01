@@ -221,16 +221,8 @@ async function sendVerifyCode() {
     document.getElementById('ob-code').value = '';
     document.getElementById('ob-cta-2').disabled = true;
 
-    // 실제 SMS 벤더 연동 전까지 임시로 인증번호를 화면에 계속 보이게 안내 (실서비스 배포 시 반드시 제거할 것)
-    let devCodeEl = document.getElementById('dev-code-hint');
-    if (!devCodeEl) {
-      devCodeEl = document.createElement('div');
-      devCodeEl.id = 'dev-code-hint';
-      devCodeEl.className = 'state-pill';
-      devCodeEl.style.marginTop = '10px';
-      document.getElementById('verify-code-area').appendChild(devCodeEl);
-    }
-    devCodeEl.innerHTML = `[테스트용] 인증번호: <b>${result.devCode}</b> <span style="text-decoration:underline; cursor:pointer;" onclick="document.getElementById('ob-code').value='${result.devCode}'; document.getElementById('ob-cta-2').disabled=false;">(자동입력)</span>`;
+    // 실제 SMS 벤더 연동 전까지 임시로 인증번호를 화면에 안내 (실서비스 배포 시 반드시 제거할 것)
+    toast(`[테스트용] 인증번호: ${result.devCode}`);
 
     let remain = 180;
     if (verifyTimerInterval) clearInterval(verifyTimerInterval);
