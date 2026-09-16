@@ -1,11 +1,16 @@
 const express = require('express');
 const { nanoid } = require('nanoid');
 const repo = require('../data/repo');
-const { bucket } = require('../data/firestore');
+const { bucket, admin } = require('../data/firestore');
 
 const router = express.Router();
 
 const ADMIN_KEY = process.env.ADMIN_KEY || 'nrayo-admin-2026';
+
+// Firebase Phone Auth는 E.164 형식(+8210...)을 쓰므로 국내 표기(010...)와 서로 변환
+function fromE164(e164Phone) {
+  return e164Phone.replace(/^\+82/, '0');
+}
 
 // POST /auth/admin-login  body: { key }
 // 관리자 키만 입력하면 가입 절차 없이 바로 앱에 진입 (전용 관리자 테스트 계정 자동 생성/재사용, 무한 별)
@@ -48,7 +53,8 @@ router.post('/signup', async (req, res) => {
   try {
     const {
       phone, birthYear, region, nickname, gender = '선택안함', bio = '', prompts = [],
-      interests = [], purpose = [], termsAgreed = false, googleUid = null, googleEmail = null
+      interests = [], purpose = [], termsAgreed = false, googleUid = null, googleEmail = null,
+      phoneIdToken = null
     } = req.body;
 
     if (!phone || !birthYear || !region || !nickname) {
@@ -65,9 +71,22 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ error: '연령 요건을 충족하지 않습니다.' });
     }
 
-    const phoneVerified = await repo.isPhoneVerified(phone);
-    if (!phoneVerified) {
+    // Firebase Phone Auth로 발급된 ID 토큰을 서버에서 검증 (직접 만든 인증 시스템 대신 Firebase 표준 기능 사용)
+    if (!phoneIdToken) {
       return res.status(400).json({ error: '휴대폰 본인인증을 먼저 완료해주세요.' });
+    }
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(phoneIdToken);
+    } catch (e) {
+      return res.status(400).json({ error: '휴대폰 인증 정보가 유효하지 않아요. 다시 인증해주세요.' });
+    }
+    if (!decoded.phone_number) {
+      return res.status(400).json({ error: '휴대폰 인증 정보를 확인할 수 없어요.' });
+    }
+    const verifiedPhone = fromE164(decoded.phone_number);
+    if (verifiedPhone !== phone) {
+      return res.status(400).json({ error: '입력한 번호와 인증된 번호가 달라요.' });
     }
 
     const existing = await repo.findUserByPhone(phone);

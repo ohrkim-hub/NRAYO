@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
-const verifyRoutes = require('./routes/verify');
 const discoveryRoutes = require('./routes/discovery');
 const quizRoutes = require('./routes/quiz');
 const friendsRoutes = require('./routes/friends');
@@ -23,7 +22,6 @@ app.get('/', (req, res) => {
 });
 
 app.use('/auth', authRoutes);
-app.use('/verify', verifyRoutes);
 app.use('/discovery', discoveryRoutes);
 app.use('/quiz', quizRoutes);
 app.use('/friends', friendsRoutes);

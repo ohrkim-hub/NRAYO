@@ -78,7 +78,7 @@ Application Default Credentials로 자동 인증됩니다. 퀴즈 문항은 콘�
 - **Firestore 연동 완료** (로컬 JSON 파일 저장소에서 전환, 서비스 계정 키 불필요)
 - **온보딩 리디자인**: 아만다(Amanda) 등 국내 인증 기반 앱 참고, 단계별(당근마켓 스타일) 흐름으로 재구성
   - 약관동의 → 휴대폰 인증(발송/확인) → 성별 → 출생연도 → 지역 → 닉네임 → 프로필 사진 → 자기소개 → 목적 → 관심사
-- **휴대폰 본인인증 (임시)**: `/verify/send`, `/verify/confirm` — 실제 SMS 벤더 연동 전까지 인증번호를 응답에 `devCode`로 함께 내려줌 (화면에 토스트로 표시). **실서비스 배포 전 반드시 실제 SMS 벤더로 교체 필요**
+- **휴대폰 본인인증 (Firebase Phone Auth)**: 자체 제작 인증 시스템을 걷어내고 Firebase의 검증된 Phone Auth로 교체함. 실제 SMS가 발송되고, 서버는 Firebase가 발급한 ID 토큰을 `admin.auth().verifyIdToken()`으로 검증 (신뢰할 수 없는 자체 로직 없음)
 - **프로필 사진 업로드**: `/auth/photo` — Firebase Storage에 저장. Cloud Run 서비스 계정에 Storage 쓰기 권한이 없으면 실패할 수 있음 (아래 권한 설정 참고)
 - **관리자 페이지**: `frontend/public/admin/` — 회원 목록/정지, 신고 목록/처리. 기본 관리자 키는 `nrayo-admin-2026` (배포 시 Cloud Run 환경변수 `ADMIN_KEY`로 꼭 변경할 것)
 - **지인 피하기**: 가입 후 Today's 2 화면에서 연락처(전화번호)를 입력하면 SHA-256 해시로만 저장하고, 추천 목록에서 해당 번호는 제외 (`/contacts/upload`)
@@ -106,6 +106,12 @@ Application Default Credentials로 자동 인증됩니다. 퀴즈 문항은 콘�
 2. **웹 앱 SDK 설정값 가져오기**: Firebase 콘솔 > 프로젝트 설정(톱니바퀴) > 일반 탭 > "내 앱" 섹션에 웹 앱이 없으면 `</>` 아이콘으로 하나 추가 → 나오는 `firebaseConfig` 객체를 복사해서 `frontend/public/index.html` 상단의 자리표시자(`여기에_API_KEY_붙여넣기` 등)를 실제 값으로 교체
 
 이 두 가지를 안 하면 "구글로 계속하기" 버튼을 눌렀을 때 에러가 납니다.
+
+## 휴대폰 인증(Phone Auth) 설정 (배포 전 필수)
+
+1. **Firebase 콘솔 > Authentication > Sign-in method > 전화 → 사용 설정**
+2. (선택, 테스트 비용 절감용) 같은 화면 하단 **"테스트용 전화번호"**에 가짜 번호(예: `+821011112222`)와 고정 인증번호(예: `123456`)를 등록해두면, 실제 SMS 발송 없이 그 번호+코드로 항상 테스트 가능
+3. 실제 번호로 테스트하면 진짜 문자가 발송되고 비용이 발생할 수 있음 (Firebase 무료 할당량 있음)
 
 ## Storage 권한 설정 (프로필 사진 업로드용)
 

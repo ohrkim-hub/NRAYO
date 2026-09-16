@@ -130,7 +130,7 @@ async function signInWithGoogle() {
 }
 
 // ---------------- 온보딩 (단계별) ----------------
-const obState = { currentStep: 0, totalSteps: 10, termsAgreed: false, gender: null, photoBase64: null, googleUid: null, googleEmail: null };
+const obState = { currentStep: 0, totalSteps: 10, termsAgreed: false, gender: null, photoBase64: null, googleUid: null, googleEmail: null, phoneIdToken: null };
 
 function showObStep(idx) {
   document.querySelectorAll('.ob-step').forEach(s => s.classList.remove('active'));
@@ -205,8 +205,20 @@ function setupTerms() {
   refresh();
 }
 
-// ---------------- 휴대폰 인증 ----------------
-let verifyTimerInterval = null;
+// ---------------- 휴대폰 인증 (Firebase Phone Auth) ----------------
+let confirmationResult = null;
+let recaptchaVerifier = null;
+
+function toE164(phone) {
+  return '+82' + phone.replace(/^0/, '');
+}
+
+function getRecaptchaVerifier() {
+  if (!recaptchaVerifier) {
+    recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', { size: 'invisible' });
+  }
+  return recaptchaVerifier;
+}
 
 async function sendVerifyCode() {
   const phone = document.getElementById('ob-phone').value.trim();
@@ -215,40 +227,34 @@ async function sendVerifyCode() {
     return;
   }
   try {
-    const result = await api('/verify/send', 'POST', { phone });
+    const appVerifier = getRecaptchaVerifier();
+    confirmationResult = await firebase.auth().signInWithPhoneNumber(toE164(phone), appVerifier);
+
     document.getElementById('verify-code-area').style.display = 'block';
     document.getElementById('verify-desc').textContent = `${phone}로 인증번호를 보냈어요`;
     document.getElementById('ob-code').value = '';
     document.getElementById('ob-cta-2').disabled = true;
-
-    // 실제 SMS 벤더 연동 전까지 임시로 인증번호를 화면에 안내 (실서비스 배포 시 반드시 제거할 것)
-    toast(`[테스트용] 인증번호: ${result.devCode}`);
-
-    let remain = 180;
-    if (verifyTimerInterval) clearInterval(verifyTimerInterval);
-    const timerEl = document.getElementById('verify-timer');
-    const tick = () => {
-      const m = String(Math.floor(remain / 60)).padStart(2, '0');
-      const s = String(remain % 60).padStart(2, '0');
-      timerEl.textContent = `남은 시간 ${m}:${s}`;
-      if (remain <= 0) { clearInterval(verifyTimerInterval); timerEl.textContent = '인증번호가 만료됐어요'; }
-      remain--;
-    };
-    tick();
-    verifyTimerInterval = setInterval(tick, 1000);
-  } catch (e) { toast(e.message); }
+    toast('인증번호를 문자로 보냈어요');
+  } catch (e) {
+    console.error(e);
+    toast('인증번호 발송에 실패했어요: ' + (e.message || ''));
+    if (recaptchaVerifier) { recaptchaVerifier.render().then(id => grecaptcha.reset(id)); }
+  }
 }
 
 async function confirmVerifyCode() {
-  const phone = document.getElementById('ob-phone').value.trim();
   const code = document.getElementById('ob-code').value.trim();
   if (!code) { toast('인증번호를 입력해주세요'); return; }
+  if (!confirmationResult) { toast('인증번호를 먼저 받아주세요'); return; }
   try {
-    await api('/verify/confirm', 'POST', { phone, code });
-    if (verifyTimerInterval) clearInterval(verifyTimerInterval);
+    const result = await confirmationResult.confirm(code);
+    obState.phoneIdToken = await result.user.getIdToken();
     toast('휴대폰 인증이 완료됐어요');
     obNext();
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    console.error(e);
+    toast('인증번호가 올바르지 않아요');
+  }
 }
 
 document.getElementById('ob-code') && document.getElementById('ob-code').addEventListener('input', () => {
@@ -315,6 +321,7 @@ async function signup() {
       termsAgreed: obState.termsAgreed,
       googleUid: obState.googleUid,
       googleEmail: obState.googleEmail,
+      phoneIdToken: obState.phoneIdToken,
       interests: Array.from(state.interests),
       purpose: Array.from(state.purpose)
     });
@@ -448,6 +455,7 @@ function renderPersonCard(c) {
   <div class="person-card">
     <div class="person-photo">
       <span class="state-tag">${stateLabel}</span>
+      ${c.boosted ? `<span class="state-tag" style="left:auto; right:10px; background:rgba(232,130,90,0.9);">🔥 우선노출</span>` : ''}
       ${photoBlock}
     </div>
     <div class="person-body">
@@ -456,7 +464,10 @@ function renderPersonCard(c) {
       ${purposeBadges ? `<div class="purpose-icon-row">${purposeBadges}</div>` : ''}
       <div class="tag-row">${(c.interests || []).map(i => `<span class="tag">${i}</span>`).join('')}</div>
       ${promptBlock}
-      <div style="margin-top:12px;">${actionBtn}</div>
+      <div style="margin-top:12px;">${actionBtn}
+        <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="NRAYO.getIcebreaker('${c.userId}','${c.nickname}')">🤖 AI 대화 주제 추천 (⭐2)</button>
+      </div>
+      <div id="icebreaker-${c.userId}"></div>
     </div>
   </div>`;
 }
@@ -767,6 +778,56 @@ async function loadMe() {
   }
 
   await loadStarPackages();
+  renderBoostCard(data.profile.boostedUntil);
+}
+
+// ---------------- 프로필 우선노출 (부스트) ----------------
+function renderBoostCard(boostedUntil) {
+  const box = document.getElementById('boost-card');
+  if (!box) return;
+  const isActive = boostedUntil && new Date(boostedUntil).getTime() > Date.now();
+
+  if (isActive) {
+    const remainMin = Math.round((new Date(boostedUntil).getTime() - Date.now()) / 60000);
+    box.innerHTML = `
+      <div style="font-weight:700;">🔥 지금 우선노출 중이에요</div>
+      <div class="muted" style="margin-top:4px;">약 ${Math.floor(remainMin / 60)}시간 ${remainMin % 60}분 남았어요</div>
+    `;
+  } else {
+    box.innerHTML = `
+      <div class="muted" style="margin-bottom:10px;">별 5개로 24시간 동안 Today's 2에 먼저 보여드려요</div>
+      <button class="btn btn-primary btn-sm" onclick="NRAYO.buyBoost()">프로필 우선노출 구매 (⭐5)</button>
+    `;
+  }
+}
+
+async function buyBoost() {
+  try {
+    const result = await api(`/discovery/boost/${state.userId}`, 'POST');
+    toast('프로필 우선노출이 시작됐어요!');
+    document.getElementById('star-count').textContent = result.stars;
+    renderBoostCard(result.boostedUntil);
+  } catch (e) { toast(e.message); }
+}
+
+// ---------------- AI 아이스브레이커 ----------------
+async function getIcebreaker(targetUserId, nickname) {
+  const box = document.getElementById(`icebreaker-${targetUserId}`);
+  if (box) box.innerHTML = `<p class="muted" style="margin-top:8px;">AI가 대화 주제를 고민하고 있어요...</p>`;
+  try {
+    const result = await api(`/discovery/icebreaker/${targetUserId}`, 'POST', { userId: state.userId });
+    if (box) {
+      box.innerHTML = `
+        <div class="card" style="margin-top:8px; padding:12px 14px;">
+          <div class="muted" style="margin-bottom:6px;">🤖 ${nickname}님과 대화 시작하기 좋은 질문</div>
+          ${result.icebreakers.map(q => `<div style="font-size:14px; margin-top:4px;">• ${q}</div>`).join('')}
+        </div>`;
+    }
+    document.getElementById('star-count').textContent = result.stars;
+  } catch (e) {
+    if (box) box.innerHTML = '';
+    toast(e.message);
+  }
 }
 
 // ---------------- 별 충전 (모의 결제) ----------------
@@ -818,7 +879,7 @@ window.NRAYO = {
   obNext, obPrev, sendVerifyCode, confirmVerifyCode, previewPhoto,
   saveContacts, skipContacts, rateManner,
   leaveTrioRoom, proposeCasual, showGame, submitSame5, setWhosThis, guessWhosThis,
-  loadExtraCandidates, chargeStars, signInWithGoogle, adminLogin
+  loadExtraCandidates, chargeStars, signInWithGoogle, adminLogin, buyBoost, getIcebreaker
 };
 window.sendFriendRequest = sendFriendRequest;
 window.openQuiz = openQuiz;
