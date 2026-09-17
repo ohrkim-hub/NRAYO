@@ -180,4 +180,16 @@ router.get('/by-google/:googleUid', async (req, res) => {
   }
 });
 
+// GET /auth/by-phone/:phone - 휴대폰 인증 시 기존 가입 여부 확인
+router.get('/by-phone/:phone', async (req, res) => {
+  try {
+    const user = await repo.findUserByPhone(req.params.phone);
+    if (!user) return res.status(404).json({ error: '가입된 계정이 없습니다.' });
+    res.json({ userId: user.id, nickname: user.nickname });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
 module.exports = router;

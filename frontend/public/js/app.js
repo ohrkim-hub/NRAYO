@@ -130,6 +130,18 @@ function useCurrentLocation() {
 }
 
 // ---------------- 구글 로그인 ----------------
+// 이미 가입된 계정으로 바로 로그인 처리 (온보딩 건너뛰기)
+function enterAppAsExistingUser(userId, nickname) {
+  state.userId = userId;
+  state.nickname = nickname;
+  document.getElementById('me-nickname-label').textContent = nickname + '님';
+  document.getElementById('screen-onboarding').classList.remove('active');
+  document.getElementById('main-app').style.display = 'flex';
+  document.getElementById('tabbar').style.display = 'flex';
+  toast(`${nickname}님, 다시 오셨네요!`);
+  loadToday();
+}
+
 async function signInWithGoogle() {
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
@@ -139,14 +151,7 @@ async function signInWithGoogle() {
     // 이미 가입된 계정인지 확인 -> 있으면 온보딩 건너뛰고 바로 로그인
     try {
       const existing = await api(`/auth/by-google/${googleUser.uid}`);
-      state.userId = existing.userId;
-      state.nickname = existing.nickname;
-      document.getElementById('me-nickname-label').textContent = existing.nickname + '님';
-      document.getElementById('screen-onboarding').classList.remove('active');
-      document.getElementById('main-app').style.display = 'flex';
-      document.getElementById('tabbar').style.display = 'flex';
-      toast(`${existing.nickname}님, 다시 오셨네요!`);
-      loadToday();
+      enterAppAsExistingUser(existing.userId, existing.nickname);
       return;
     } catch (notFoundErr) {
       // 가입 이력 없음 -> 신규 가입 흐름으로 계속 진행 (구글 정보만 저장해두고 온보딩 이어감)
@@ -276,12 +281,23 @@ async function sendVerifyCode() {
 }
 
 async function confirmVerifyCode() {
+  const phone = document.getElementById('ob-phone').value.trim();
   const code = document.getElementById('ob-code').value.trim();
   if (!code) { toast('인증번호를 입력해주세요'); return; }
   if (!confirmationResult) { toast('인증번호를 먼저 받아주세요'); return; }
   try {
     const result = await confirmationResult.confirm(code);
     obState.phoneIdToken = await result.user.getIdToken();
+
+    // 이미 가입된 번호인지 확인 -> 있으면 온보딩 건너뛰고 바로 로그인
+    try {
+      const existing = await api(`/auth/by-phone/${phone}`);
+      enterAppAsExistingUser(existing.userId, existing.nickname);
+      return;
+    } catch (notFoundErr) {
+      // 가입 이력 없음 -> 신규 가입 흐름으로 계속 진행
+    }
+
     toast('휴대폰 인증이 완료됐어요');
     obNext();
   } catch (e) {
