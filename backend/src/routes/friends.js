@@ -45,7 +45,19 @@ router.post('/accept', async (req, res) => {
       repo.updateProfile(request.toUserId, { state: 'DM_OPEN' })
     ]);
 
-    res.json({ friendshipId, status: 'CONNECTED', dmOpen: true });
+    // 친구가 되면 1:1 DM 채팅방을 자동으로 만들어줌 (만료 없음)
+    const roomId = nanoid();
+    const now = new Date().toISOString();
+    await repo.createRoom(roomId, {
+      id: roomId, creatorUserId: request.fromUserId, createdAt: now,
+      expiresAt: null, status: 'ACTIVE', isDM: true, tone: 'FRIENDLY_CASUAL', casualUnlocked: true
+    });
+    await repo.addRoomMembers(roomId, [
+      { userId: request.fromUserId, joinedAt: now },
+      { userId: request.toUserId, joinedAt: now }
+    ]);
+
+    res.json({ friendshipId, status: 'CONNECTED', dmOpen: true, roomId });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: '서버 오류가 발생했습니다.' });

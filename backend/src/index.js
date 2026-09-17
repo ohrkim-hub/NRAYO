@@ -12,6 +12,7 @@ const adminRoutes = require('./routes/admin');
 const contactsRoutes = require('./routes/contacts');
 const ratingsRoutes = require('./routes/ratings');
 const paymentsRoutes = require('./routes/payments');
+const geocodeRoutes = require('./routes/geocode');
 
 const app = express();
 app.use(cors());
@@ -32,6 +33,7 @@ app.use('/admin', adminRoutes);
 app.use('/contacts', contactsRoutes);
 app.use('/ratings', ratingsRoutes);
 app.use('/payments', paymentsRoutes);
+app.use('/geocode', geocodeRoutes);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {

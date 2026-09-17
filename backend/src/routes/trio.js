@@ -5,6 +5,44 @@ const { SAME5_PROMPTS } = require('../data/gamePrompts');
 
 const router = express.Router();
 
+// GET /trio/list/:userId - 내가 속한 모든 대화방(1:1 DM + TRIO) 목록
+router.get('/list/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const rooms = await repo.listRoomsForUser(userId);
+
+    const enriched = [];
+    for (const room of rooms) {
+      const members = await repo.getRoomMembers(room.id);
+      const otherMembers = members.filter(m => m.userId !== userId);
+      let title;
+      if (room.isDM) {
+        const otherUser = otherMembers[0] ? await repo.getUser(otherMembers[0].userId) : null;
+        title = otherUser ? otherUser.nickname : '알 수 없음';
+      } else {
+        const names = await Promise.all(otherMembers.map(async m => {
+          const u = await repo.getUser(m.userId);
+          return u ? u.nickname : '';
+        }));
+        title = names.filter(Boolean).join(', ') || 'TRIO';
+      }
+      enriched.push({
+        roomId: room.id,
+        title,
+        isDM: !!room.isDM,
+        isFiveChat: !!room.isFiveChat,
+        lastMessageText: room.lastMessageText || '',
+        lastMessageAt: room.lastMessageAt || room.createdAt,
+        memberCount: members.length
+      });
+    }
+    res.json({ rooms: enriched });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
 // POST /trio/create
 router.post('/create', async (req, res) => {
   try {
@@ -44,6 +82,7 @@ router.post('/:roomId/message', async (req, res) => {
 
     const message = { id: nanoid(), userId, text, createdAt: new Date().toISOString() };
     await repo.addRoomMessage(roomId, message);
+    await repo.updateRoom(roomId, { lastMessageAt: message.createdAt, lastMessageText: text });
     res.status(201).json(message);
   } catch (e) {
     console.error(e);

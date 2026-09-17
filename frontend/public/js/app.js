@@ -96,6 +96,39 @@ async function adminLogin() {
   }
 }
 
+// ---------------- 현재 위치로 지역 찾기 ----------------
+function useCurrentLocation() {
+  if (!navigator.geolocation) {
+    toast('이 브라우저는 위치 기능을 지원하지 않아요');
+    return;
+  }
+  const btn = document.getElementById('btn-use-location');
+  btn.disabled = true;
+  btn.textContent = '위치 확인 중...';
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      try {
+        const { latitude, longitude } = position.coords;
+        const result = await api('/geocode/reverse', 'POST', { lat: latitude, lng: longitude });
+        document.getElementById('ob-region').value = result.region;
+        document.getElementById('ob-region').dispatchEvent(new Event('input'));
+        toast('현재 위치를 찾았어요');
+      } catch (e) {
+        toast(e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📍 현재 위치로 찾기';
+      }
+    },
+    () => {
+      toast('위치 권한을 허용해주셔야 사용할 수 있어요');
+      btn.disabled = false;
+      btn.textContent = '📍 현재 위치로 찾기';
+    }
+  );
+}
+
 // ---------------- 구글 로그인 ----------------
 async function signInWithGoogle() {
   try {
@@ -541,14 +574,24 @@ async function loadTrioList() {
     });
   }
 
-  const list = document.getElementById('trio-list');
-  if (state.currentTrioRoom) {
-    list.innerHTML = `<div class="card">
-      <div style="font-weight:800;">진행 중인 TRIO 방이 있어요</div>
-      <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="openTrioRoom('${state.currentTrioRoom}')">방 열기</button>
-    </div>`;
-  } else {
-    list.innerHTML = '';
+  const list = document.getElementById('chat-list');
+  try {
+    const data = await api(`/trio/list/${state.userId}`);
+    if (!data.rooms.length) {
+      list.innerHTML = `<div class="empty-state">아직 대화가 없어요.<br/>Today's 2에서 친구를 만들면 자동으로 채팅방이 생겨요.</div>`;
+      return;
+    }
+    list.innerHTML = data.rooms.map(r => `
+      <div class="card" style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; cursor:pointer;" onclick="NRAYO.openTrioRoom('${r.roomId}')">
+        <div>
+          <div style="font-weight:800;">${r.isDM ? '' : (r.isFiveChat ? '💛 ' : '👥 ')}${r.title}</div>
+          <div class="muted" style="margin-top:2px; font-size:13px;">${r.lastMessageText || '대화를 시작해보세요'}</div>
+        </div>
+        <span class="muted" style="font-size:11px;">${(r.lastMessageAt || '').slice(5, 10)}</span>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = `<p class="muted">채팅 목록을 불러오지 못했어요.</p>`;
   }
 }
 
@@ -879,7 +922,7 @@ window.NRAYO = {
   obNext, obPrev, sendVerifyCode, confirmVerifyCode, previewPhoto,
   saveContacts, skipContacts, rateManner,
   leaveTrioRoom, proposeCasual, showGame, submitSame5, setWhosThis, guessWhosThis,
-  loadExtraCandidates, chargeStars, signInWithGoogle, adminLogin, buyBoost, getIcebreaker
+  loadExtraCandidates, chargeStars, signInWithGoogle, adminLogin, buyBoost, getIcebreaker, useCurrentLocation
 };
 window.sendFriendRequest = sendFriendRequest;
 window.openQuiz = openQuiz;

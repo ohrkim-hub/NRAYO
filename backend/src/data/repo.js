@@ -157,6 +157,7 @@ module.exports = {
   addQuizAttempt, countAttempts,
   createFriendRequest, getFriendRequest, updateFriendRequest, createFriendship,
   createRoom, getRoom, updateRoom, addRoomMembers, getRoomMembers, addRoomMessage, getRoomMessages,
+  listRoomsForUser,
   createMeet, getMeet, addMeetParticipant, getMeetParticipants, updateMeetParticipant,
   createReport, listReports, createBlock,
   saveVerificationCode, getVerificationCode, markPhoneVerified, isPhoneVerified,
@@ -167,6 +168,20 @@ module.exports = {
   saveGameAnswer, getGameAnswers,
   saveWhosThisQuestion, getWhosThisQuestion, saveWhosThisGuess, getWhosThisGuesses
 };
+
+// ---------------- 내 모든 대화방 (1:1 DM + TRIO) 조회 ----------------
+async function listRoomsForUser(userId) {
+  const snap = await db.collectionGroup('members').where('userId', '==', userId).get();
+  const rooms = [];
+  for (const doc of snap.docs) {
+    const roomRef = doc.ref.parent.parent;
+    if (!roomRef) continue;
+    const roomSnap = await roomRef.get();
+    if (roomSnap.exists) rooms.push(roomSnap.data());
+  }
+  rooms.sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt));
+  return rooms;
+}
 
 async function findUserByGoogleUid(googleUid) {
   const snap = await db.collection('users').where('googleUid', '==', googleUid).limit(1).get();

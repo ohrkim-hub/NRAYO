@@ -130,6 +130,18 @@ gcloud run services update nrayo-backend --region asia-northeast3 \
   --set-env-vars ADMIN_KEY=원하는키로변경
 ```
 
+## 위치 자동 감지 설정 (카카오 API 키 필요)
+
+1. https://developers.kakao.com 접속 → 로그인 → **내 애플리케이션** → **애플리케이션 추가하기**
+2. 만든 앱 클릭 → **앱 키** 탭 → **REST API 키** 복사
+3. **플랫폼** 탭에서 Web 플랫폼 등록 시 사이트 도메인에 `https://nrayo-3c940.web.app` 추가
+4. Cloud Run에 키 등록:
+```bash
+gcloud run services update nrayo-backend --region asia-northeast3 \
+  --update-env-vars KAKAO_REST_API_KEY=발급받은키
+```
+설정 전까지는 "현재 위치로 찾기" 버튼을 눌러도 에러 메시지만 뜨고, 나머지 기능은 정상 작동합니다.
+
 ## 다음 단계 (P1 이후)
 
 - D-3 Pre-Meet Quiz, WHO'S THIS/MBTI Guess/SAME 5 관계 게임 실제 콘텐츠화
