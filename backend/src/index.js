@@ -13,10 +13,14 @@ const contactsRoutes = require('./routes/contacts');
 const ratingsRoutes = require('./routes/ratings');
 const paymentsRoutes = require('./routes/payments');
 const geocodeRoutes = require('./routes/geocode');
+const feedRoutes = require('./routes/feed');
+const suggestionsRoutes = require('./routes/suggestions');
+const kakaoRoutes = require('./routes/kakao');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// 프로필/게시글 사진이 base64로 들어오므로 기본 100kb 제한으로는 부족해서 넉넉히 올림
+app.use(express.json({ limit: '10mb' }));
 
 app.get('/', (req, res) => {
   res.json({ service: 'NRAYO(너랑요) API', version: '0.1.0', status: 'ok' });
@@ -34,6 +38,9 @@ app.use('/contacts', contactsRoutes);
 app.use('/ratings', ratingsRoutes);
 app.use('/payments', paymentsRoutes);
 app.use('/geocode', geocodeRoutes);
+app.use('/feed', feedRoutes);
+app.use('/suggestions', suggestionsRoutes);
+app.use('/kakao', kakaoRoutes);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {

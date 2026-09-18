@@ -28,8 +28,15 @@
 <body>
 <div id="app">
 
+  <!-- ================= 자동 로그인 확인 스플래시 ================= -->
+  <section id="screen-splash" class="screen active">
+    <div class="ob-emoji">🍑</div>
+    <div class="ob-title">너랑요</div>
+    <div class="splash-spinner"></div>
+  </section>
+
   <!-- ================= 온보딩 (단계별) ================= -->
-  <section id="screen-onboarding" class="screen active">
+  <section id="screen-onboarding" class="screen">
     <div class="ob-progress"><div class="ob-progress-bar" id="ob-progress-bar"></div></div>
     <button class="ob-back" id="ob-back-btn" onclick="NRAYO.obPrev()" style="display:none;">←</button>
 
@@ -228,6 +235,10 @@
     <!-- ---- TODAY ---- -->
     <section id="screen-today" class="screen active">
       <div id="contacts-prompt-card"></div>
+      <div class="notice-banner">
+        <span class="notice-icon">📢</span>
+        <span><b>공지</b> · 별을 쓰면 실시간으로 새 추천을 더 받거나, 친구와 카카오톡을 교환할 수 있어요. (ME 탭에서 확인)</span>
+      </div>
       <div class="hero-question">오늘, 누구랑?</div>
       <div class="hero-answer">오늘의 2명이에요</div>
       <div id="today-list"></div>
@@ -270,6 +281,7 @@
         <div class="tabs" style="display:flex; gap:8px; margin-bottom:10px;">
           <button class="btn btn-ghost btn-sm" onclick="NRAYO.showGame('same5')">SAME 5</button>
           <button class="btn btn-ghost btn-sm" onclick="NRAYO.showGame('whosthis')">WHO'S THIS?</button>
+          <button class="btn btn-ghost btn-sm" onclick="NRAYO.showGame('draw')">🎨 그림 맞추기</button>
           <button class="btn btn-ghost btn-sm" onclick="NRAYO.showGame(null)">닫기</button>
         </div>
         <div id="game-area"></div>
@@ -283,6 +295,35 @@
         <input type="text" id="trio-msg-input" placeholder="메시지 보내기" style="flex:1;" />
         <button class="btn btn-primary btn-sm" onclick="NRAYO.sendTrioMessage()">전송</button>
       </div>
+    </section>
+
+    <!-- ---- 동네생활 (게시판) ---- -->
+    <section id="screen-feed" class="screen">
+      <div class="hero-question">동네생활</div>
+      <div class="hero-answer">오늘 있었던 소소한 이야기를 나눠요</div>
+
+      <div class="card">
+        <textarea id="feed-compose-text" class="ob-textarea" style="width:100%; min-height:70px;"
+          maxlength="500" placeholder="오늘 하루 어땠어요? 동네 이야기, 뭐든 편하게 적어보세요"></textarea>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+          <div class="photo-upload-box" style="width:56px; height:56px; margin:0;" onclick="document.getElementById('feed-photo-input').click();">
+            <img id="feed-photo-preview" style="display:none;" />
+            <span id="feed-photo-placeholder" style="font-size:20px;">📷</span>
+          </div>
+          <input type="file" id="feed-photo-input" accept="image/*" style="display:none;" onchange="NRAYO.previewFeedPhoto(event)" />
+          <span class="muted">사진은 선택이에요</span>
+        </div>
+        <label class="terms-row" style="padding:10px 0 0; cursor:pointer;">
+          <input type="checkbox" id="feed-recruit-toggle" onchange="NRAYO.toggleRecruitField(this.checked)" />
+          <span style="font-size:13px; font-weight:700;">🙋 같이 갈 사람 모집하기</span>
+        </label>
+        <div class="field" id="feed-place-field" style="display:none; margin:10px 0 0;">
+          <input type="text" id="feed-place-name" maxlength="40" placeholder="어디 가고 싶어요? (예: 불당동 스타벅스)" />
+        </div>
+        <button class="btn btn-primary" style="margin-top:12px;" onclick="NRAYO.submitPost()">글 남기기</button>
+      </div>
+
+      <div id="feed-list"></div>
     </section>
 
     <!-- ---- MEET ---- -->
@@ -299,6 +340,26 @@
       <div id="meet-list"></div>
     </section>
 
+    <!-- ---- 건의사항 ---- -->
+    <section id="screen-suggest" class="screen">
+      <div class="hero-question">건의사항</div>
+      <div class="hero-answer">여러분이 만들어가는 앱이에요, 뭐든 말씀해주세요</div>
+
+      <div class="card">
+        <div class="chip-select" id="suggest-category-chips">
+          <div class="chip selected" data-v="기능 제안">기능 제안</div>
+          <div class="chip" data-v="버그 신고">버그 신고</div>
+          <div class="chip" data-v="디자인/UX">디자인/UX</div>
+          <div class="chip" data-v="기타">기타</div>
+        </div>
+        <textarea id="suggest-compose-text" class="ob-textarea" style="width:100%; min-height:70px; margin-top:10px;"
+          maxlength="500" placeholder="이런 기능이 있으면 좋겠어요, 여기 좀 불편해요 등 편하게 적어주세요"></textarea>
+        <button class="btn btn-primary" style="margin-top:12px;" onclick="NRAYO.submitSuggestion()">건의하기</button>
+      </div>
+
+      <div id="suggest-list"></div>
+    </section>
+
     <!-- ---- ME ---- -->
     <section id="screen-me" class="screen">
       <div class="hero-question">MY 5</div>
@@ -311,11 +372,23 @@
       <div class="section-title">프로필 우선노출</div>
       <div class="card" id="boost-card"></div>
 
+      <div class="section-title"><span class="premium-badge">✨ 프리미엄</span> 카카오톡 ID</div>
+      <div class="card kakao-exchange-card">
+        <div class="muted" style="margin-bottom:8px;">내 카카오톡 ID를 등록해두면, 친구가 교환을 요청해서 수락했을 때만 서로에게 공개돼요.</div>
+        <div class="field">
+          <input type="text" id="kakao-id-input" placeholder="내 카카오톡 ID" maxlength="30" />
+        </div>
+        <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="NRAYO.saveKakaoId()">저장하기</button>
+      </div>
+
       <div class="section-title">친구</div>
       <div id="me-friends-list"></div>
       <div class="section-title">Safety</div>
       <div class="card">
         <button class="btn btn-outline" onclick="alert('신고는 상대 프로필 화면에서 진행합니다.')">신고 방법 안내</button>
+      </div>
+      <div class="card" style="margin-top:10px;">
+        <button class="btn btn-outline" onclick="NRAYO.logout()">로그아웃</button>
       </div>
       <div style="text-align:center; margin-top:20px;">
         <a href="admin/" style="font-size:11px; color:var(--text-soft); text-decoration:underline;">관리자 페이지</a>
@@ -326,7 +399,9 @@
   <div class="tabbar" id="tabbar" style="display:none;">
     <button class="tab-btn active" data-tab="today" onclick="NRAYO.showScreen('today')"><span>TODAY</span></button>
     <button class="tab-btn" data-tab="trio" onclick="NRAYO.showScreen('trio')"><span>채팅</span></button>
+    <button class="tab-btn" data-tab="feed" onclick="NRAYO.showScreen('feed')"><span>동네생활</span></button>
     <button class="tab-btn" data-tab="meet" onclick="NRAYO.showScreen('meet')"><span>MEET</span></button>
+    <button class="tab-btn" data-tab="suggest" onclick="NRAYO.showScreen('suggest')"><span>건의사항</span></button>
     <button class="tab-btn" data-tab="me" onclick="NRAYO.showScreen('me')"><span>ME</span></button>
   </div>
 

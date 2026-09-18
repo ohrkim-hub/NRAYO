@@ -1,5 +1,5 @@
 // Bump CACHE_NAME on every deploy to avoid stale cache
-const CACHE_NAME = 'nrayo-v0.1.2';
+const CACHE_NAME = 'nrayo-v0.5.0';
 const ASSETS = ['./index.html', './css/style.css', './js/app.js', './manifest.json', './icons/icon.svg'];
 
 self.addEventListener('install', (e) => {

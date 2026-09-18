@@ -1,7 +1,7 @@
 const express = require('express');
 const { nanoid } = require('nanoid');
 const repo = require('../data/repo');
-const { SAME5_PROMPTS } = require('../data/gamePrompts');
+const { SAME5_PROMPTS, DRAW_WORDS } = require('../data/gamePrompts');
 
 const router = express.Router();
 
@@ -239,6 +239,109 @@ router.post('/:roomId/game/whosthis/guess', async (req, res) => {
     await repo.saveWhosThisGuess(roomId, userId, String(guess).trim());
     const correct = String(guess).trim().toLowerCase() === question.correctAnswer.toLowerCase();
     res.json({ correct, correctAnswer: correct ? question.correctAnswer : undefined });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
+// ---------------- 그림 맞추기 (캐치마인드 스타일) ----------------
+const DRAW_IMAGE_MAX_LENGTH = 700000; // base64 문자열 기준 대략 500KB 정도 캡 (작은 캔버스라 여유있게)
+
+// POST /trio/:roomId/game/draw/start  body: { userId }
+// 랜덤 단어를 뽑아서 새 라운드를 시작 (그림/맞히기 기록은 초기화됨)
+router.post('/:roomId/game/draw/start', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId는 필수입니다.' });
+
+    const members = (await repo.getRoomMembers(roomId)).map(m => m.userId);
+    if (!members.includes(userId)) return res.status(403).json({ error: '이 방의 멤버가 아니에요.' });
+
+    const word = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)];
+    await repo.clearDrawGuesses(roomId);
+    await repo.saveDrawRound(roomId, {
+      word, drawerUserId: userId, imageBase64: null,
+      correctUserId: null, correctAt: null, startedAt: new Date().toISOString()
+    });
+    res.status(201).json({ word, drawerUserId: userId });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
+// POST /trio/:roomId/game/draw/update  body: { userId, imageBase64 }
+// 그리는 사람이 스트로크를 끝낼 때마다(pointerup) 캔버스 스냅샷을 업로드 -> 다른 멤버는 폴링으로 확인
+router.post('/:roomId/game/draw/update', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { userId, imageBase64 } = req.body;
+    const round = await repo.getDrawRound(roomId);
+    if (!round) return res.status(404).json({ error: '진행 중인 게임이 없어요.' });
+    if (round.drawerUserId !== userId) return res.status(403).json({ error: '그림을 그리는 사람만 업데이트할 수 있어요.' });
+    if (round.correctUserId) return res.status(400).json({ error: '이미 정답이 나온 라운드예요.' });
+    if (imageBase64 && imageBase64.length > DRAW_IMAGE_MAX_LENGTH) {
+      return res.status(400).json({ error: '이미지 용량이 너무 커요.' });
+    }
+    await repo.updateDrawRound(roomId, { imageBase64: imageBase64 || null });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
+// GET /trio/:roomId/game/draw?userId=xxx
+// 정답이 나오기 전까지는 그리는 사람 본인에게만 단어(word)를 내려줌
+router.get('/:roomId/game/draw', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { userId } = req.query;
+    const round = await repo.getDrawRound(roomId);
+    const guesses = await repo.listDrawGuesses(roomId);
+    if (!round) return res.json({ round: null, guesses: [] });
+
+    const revealWord = round.drawerUserId === userId || !!round.correctUserId;
+    res.json({
+      round: {
+        drawerUserId: round.drawerUserId,
+        imageBase64: round.imageBase64,
+        correctUserId: round.correctUserId,
+        startedAt: round.startedAt,
+        word: revealWord ? round.word : null
+      },
+      guesses
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
+// POST /trio/:roomId/game/draw/guess  body: { userId, nickname, guess }
+router.post('/:roomId/game/draw/guess', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { userId, nickname, guess } = req.body;
+    const round = await repo.getDrawRound(roomId);
+    if (!round) return res.status(404).json({ error: '진행 중인 게임이 없어요.' });
+    if (round.drawerUserId === userId) return res.status(400).json({ error: '그리는 사람은 맞힐 수 없어요.' });
+    if (round.correctUserId) return res.status(400).json({ error: '이미 정답이 나왔어요.' });
+    if (!guess || !guess.trim()) return res.status(400).json({ error: '정답을 입력해주세요.' });
+
+    const normalize = (s) => String(s).trim().toLowerCase().replace(/\s/g, '');
+    const correct = normalize(guess) === normalize(round.word);
+    const guessId = nanoid();
+    await repo.addDrawGuess(roomId, guessId, {
+      id: guessId, userId, nickname: nickname || '', guess: guess.trim(), correct,
+      createdAt: new Date().toISOString()
+    });
+    if (correct) {
+      await repo.updateDrawRound(roomId, { correctUserId: userId, correctAt: new Date().toISOString() });
+    }
+    res.json({ correct, word: correct ? round.word : undefined });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: '서버 오류가 발생했습니다.' });

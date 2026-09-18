@@ -26,8 +26,37 @@ const state = {
   currentQuizTarget: null,
   currentTrioRoom: null,
   trioPollTimer: null,
-  currentGame: null // 'same5' | 'whosthis' | null
+  currentGame: null, // 'same5' | 'whosthis' | 'draw' | null
+  drawPollTimer: null
 };
+
+// ---------------- 자동 로그인용 세션 저장 ----------------
+const SESSION_USERID_KEY = 'nrayo_userId';
+const SESSION_NICKNAME_KEY = 'nrayo_nickname';
+
+function saveSession(userId, nickname) {
+  try {
+    localStorage.setItem(SESSION_USERID_KEY, userId);
+    localStorage.setItem(SESSION_NICKNAME_KEY, nickname || '');
+  } catch (e) { /* 저장 실패해도 로그인 자체는 계속 진행 */ }
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem(SESSION_USERID_KEY);
+    localStorage.removeItem(SESSION_NICKNAME_KEY);
+  } catch (e) { /* noop */ }
+}
+
+function hideSplash() {
+  const el = document.getElementById('screen-splash');
+  if (el) el.classList.remove('active');
+}
+
+function showOnboarding() {
+  hideSplash();
+  document.getElementById('screen-onboarding').classList.add('active');
+}
 
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -74,7 +103,376 @@ function showScreen(name) {
 
   if (name === 'today') loadToday();
   if (name === 'trio') loadTrioList();
+  if (name === 'feed') loadFeed();
+  if (name === 'suggest') loadSuggestions();
   if (name === 'me') loadMe();
+}
+
+// ---------------- 동네생활 (게시판) ----------------
+const feedState = { photoBase64: null };
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+
+function timeAgo(iso) {
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return '방금';
+  if (min < 60) return `${min}분 전`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour}시간 전`;
+  const day = Math.floor(hour / 24);
+  if (day < 7) return `${day}일 전`;
+  return new Date(iso).toLocaleDateString('ko-KR');
+}
+
+function previewFeedPhoto(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast('사진 용량은 5MB 이하로 올려주세요'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    feedState.photoBase64 = reader.result;
+    const preview = document.getElementById('feed-photo-preview');
+    preview.src = reader.result;
+    preview.style.display = 'block';
+    document.getElementById('feed-photo-placeholder').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function toggleRecruitField(checked) {
+  document.getElementById('feed-place-field').style.display = checked ? 'block' : 'none';
+  if (!checked) document.getElementById('feed-place-name').value = '';
+}
+
+async function submitPost() {
+  const textEl = document.getElementById('feed-compose-text');
+  const text = textEl.value.trim();
+  if (!text) { toast('내용을 입력해주세요'); return; }
+  const isRecruit = document.getElementById('feed-recruit-toggle').checked;
+  const placeName = document.getElementById('feed-place-name').value.trim();
+  if (isRecruit && !placeName) { toast('어디 가고 싶은지 장소를 입력해주세요'); return; }
+  try {
+    await api('/feed/posts', 'POST', {
+      userId: state.userId, text, photoBase64: feedState.photoBase64,
+      placeName: isRecruit ? placeName : null
+    });
+    textEl.value = '';
+    feedState.photoBase64 = null;
+    document.getElementById('feed-photo-preview').style.display = 'none';
+    document.getElementById('feed-photo-placeholder').style.display = 'block';
+    document.getElementById('feed-photo-input').value = '';
+    document.getElementById('feed-recruit-toggle').checked = false;
+    document.getElementById('feed-place-name').value = '';
+    document.getElementById('feed-place-field').style.display = 'none';
+    toast('글이 등록됐어요');
+    loadFeed();
+  } catch (e) { toast(e.message); }
+}
+
+async function loadFeed() {
+  const list = document.getElementById('feed-list');
+  if (!list) return;
+  list.innerHTML = `<div class="muted" style="text-align:center; padding:20px;">불러오는 중...</div>`;
+  try {
+    const data = await api('/feed/posts');
+    if (!data.posts.length) {
+      list.innerHTML = `<div class="empty-state">아직 글이 없어요.<br/>첫 이야기를 남겨보세요!</div>`;
+      return;
+    }
+    list.innerHTML = data.posts.map(renderPostCard).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state">글을 불러오지 못했어요.</div>`;
+  }
+}
+
+function renderPostCard(post) {
+  const likedBy = post.likedBy || [];
+  const liked = likedBy.includes(state.userId);
+  const isMine = post.userId === state.userId;
+  const isRecruit = post.postType === 'recruit';
+  const participants = post.participants || [];
+  const joined = participants.some(p => p.userId === state.userId);
+
+  const recruitBlock = isRecruit ? `
+      <div style="margin-top:10px; background:var(--surface-soft); border-radius:var(--radius-sm); padding:10px 12px;">
+        <div style="font-weight:800; color:var(--accent-dark); font-size:13px;">🙋 같이가요 · ${escapeHtml(post.placeName || '')}</div>
+        <div class="muted" data-role="join-names" style="margin-top:4px; font-size:12px;">
+          ${participants.length > 0 ? participants.map(p => escapeHtml(p.nickname)).join(', ') + '님 참여중' : '아직 참여자가 없어요'}
+        </div>
+        <button class="btn ${joined ? 'btn-outline' : 'btn-primary'} btn-sm" style="margin-top:8px;"
+          data-role="join-btn" data-count="${participants.length}"
+          onclick="NRAYO.toggleJoin('${post.id}')">${joined ? '참여 취소하기' : '참여하기'} (${participants.length}명)</button>
+      </div>` : '';
+
+  return `
+    <div class="card" id="post-${post.id}">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div style="font-weight:800;">${escapeHtml(post.nickname)}</div>
+          <div class="muted">${post.region ? escapeHtml(post.region) + ' · ' : ''}${timeAgo(post.createdAt)}</div>
+        </div>
+        ${isMine
+          ? `<button class="btn btn-ghost btn-sm" onclick="NRAYO.deletePost('${post.id}')">삭제</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="NRAYO.reportPost('${post.id}','${post.userId}')">신고</button>`}
+      </div>
+      <div style="margin-top:10px; white-space:pre-wrap; font-size:14px; line-height:1.5;">${escapeHtml(post.text)}</div>
+      ${post.photoUrl ? `<img src="${post.photoUrl}" style="width:100%; border-radius:var(--radius-sm); margin-top:10px;" />` : ''}
+      ${recruitBlock}
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button class="btn btn-ghost btn-sm" data-role="like-btn" data-count="${likedBy.length}" onclick="NRAYO.toggleLike('${post.id}')">${liked ? '💛' : '🤍'} 좋아요 ${likedBy.length}</button>
+        <button class="btn btn-ghost btn-sm" data-role="comment-count" data-count="${post.commentCount || 0}" onclick="NRAYO.toggleComments('${post.id}')">💬 댓글 ${post.commentCount || 0}</button>
+      </div>
+      <div id="comments-${post.id}" style="display:none; margin-top:10px;"></div>
+    </div>`;
+}
+
+async function toggleLike(postId) {
+  try {
+    const result = await api(`/feed/posts/${postId}/like`, 'POST', { userId: state.userId });
+    const btn = document.querySelector(`#post-${postId} [data-role="like-btn"]`);
+    if (btn) {
+      let count = parseInt(btn.dataset.count || '0', 10);
+      count = result.liked ? count + 1 : Math.max(0, count - 1);
+      btn.dataset.count = count;
+      btn.textContent = `${result.liked ? '💛' : '🤍'} 좋아요 ${count}`;
+    }
+  } catch (e) { toast(e.message); }
+}
+
+async function toggleJoin(postId) {
+  try {
+    const result = await api(`/feed/posts/${postId}/join`, 'POST', { userId: state.userId });
+    const card = document.getElementById(`post-${postId}`);
+    if (!card) return;
+    const participants = result.participants || [];
+    const joined = participants.some(p => p.userId === state.userId);
+    const namesEl = card.querySelector('[data-role="join-names"]');
+    if (namesEl) {
+      namesEl.textContent = participants.length > 0
+        ? participants.map(p => p.nickname).join(', ') + '님 참여중'
+        : '아직 참여자가 없어요';
+    }
+    const btn = card.querySelector('[data-role="join-btn"]');
+    if (btn) {
+      btn.textContent = `${joined ? '참여 취소하기' : '참여하기'} (${participants.length}명)`;
+      btn.classList.toggle('btn-primary', !joined);
+      btn.classList.toggle('btn-outline', joined);
+    }
+  } catch (e) { toast(e.message); }
+}
+
+async function toggleComments(postId) {
+  const box = document.getElementById(`comments-${postId}`);
+  if (!box) return;
+  const isOpen = box.style.display !== 'none';
+  if (isOpen) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  await renderComments(postId);
+}
+
+async function renderComments(postId) {
+  const box = document.getElementById(`comments-${postId}`);
+  if (!box) return;
+  box.innerHTML = `<div class="muted">불러오는 중...</div>`;
+  try {
+    const data = await api(`/feed/posts/${postId}/comments`);
+    const commentsHtml = data.comments.map(c => `
+      <div style="padding:8px 0; border-bottom:1px solid var(--line);">
+        <div style="font-weight:700; font-size:13px;">${escapeHtml(c.nickname)}</div>
+        <div style="font-size:13px;">${escapeHtml(c.text)}</div>
+      </div>`).join('') || `<div class="muted" style="padding:6px 0;">아직 댓글이 없어요.</div>`;
+    box.innerHTML = `${commentsHtml}
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <input type="text" id="comment-input-${postId}" placeholder="댓글 달기" style="flex:1;" />
+        <button class="btn btn-primary btn-sm" onclick="NRAYO.submitComment('${postId}')">등록</button>
+      </div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="muted">댓글을 불러오지 못했어요.</div>`;
+  }
+}
+
+async function submitComment(postId) {
+  const input = document.getElementById(`comment-input-${postId}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    await api(`/feed/posts/${postId}/comments`, 'POST', { userId: state.userId, text });
+    await renderComments(postId);
+    const countBtn = document.querySelector(`#post-${postId} [data-role="comment-count"]`);
+    if (countBtn) {
+      const count = parseInt(countBtn.dataset.count || '0', 10) + 1;
+      countBtn.dataset.count = count;
+      countBtn.textContent = `💬 댓글 ${count}`;
+    }
+  } catch (e) { toast(e.message); }
+}
+
+async function deletePost(postId) {
+  if (!confirm('이 글을 삭제할까요?')) return;
+  try {
+    await api(`/feed/posts/${postId}`, 'DELETE', { userId: state.userId });
+    toast('삭제됐어요');
+    loadFeed();
+  } catch (e) { toast(e.message); }
+}
+
+async function reportPost(postId, targetUserId) {
+  if (!confirm('이 글을 신고할까요? 신고 시 작성자와의 상호작용이 즉시 제한돼요.')) return;
+  try {
+    await api('/safety/report', 'POST', { fromUserId: state.userId, targetUserId, reason: '기타', postId });
+    toast('신고가 접수됐어요');
+  } catch (e) { toast(e.message); }
+}
+
+// ---------------- 건의사항 (유저가 만들어가는 앱) ----------------
+const SUGGESTION_STATUS_COLOR = {
+  '신규': 'var(--text-soft)',
+  '검토중': 'var(--accent-dark)',
+  '반영 예정': 'var(--accent-dark)',
+  '반영 완료': 'var(--success)',
+  '보류': 'var(--text-soft)'
+};
+
+function getSelectedSuggestCategory() {
+  const selected = document.querySelector('#suggest-category-chips .chip.selected');
+  return selected ? selected.dataset.v : '기타';
+}
+
+async function submitSuggestion() {
+  const textEl = document.getElementById('suggest-compose-text');
+  const text = textEl.value.trim();
+  if (!text) { toast('내용을 입력해주세요'); return; }
+  const category = getSelectedSuggestCategory();
+  try {
+    await api('/suggestions', 'POST', { userId: state.userId, text, category });
+    textEl.value = '';
+    toast('건의해주셔서 감사해요!');
+    loadSuggestions();
+  } catch (e) { toast(e.message); }
+}
+
+async function loadSuggestions() {
+  const list = document.getElementById('suggest-list');
+  if (!list) return;
+  list.innerHTML = `<div class="muted" style="text-align:center; padding:20px;">불러오는 중...</div>`;
+  try {
+    const data = await api('/suggestions');
+    if (!data.suggestions.length) {
+      list.innerHTML = `<div class="empty-state">아직 건의사항이 없어요.<br/>첫 의견을 남겨보세요!</div>`;
+      return;
+    }
+    list.innerHTML = data.suggestions.map(renderSuggestionCard).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state">불러오지 못했어요.</div>`;
+  }
+}
+
+function renderSuggestionCard(s) {
+  const likedBy = s.likedBy || [];
+  const liked = likedBy.includes(state.userId);
+  const isMine = s.userId === state.userId;
+  const statusColor = SUGGESTION_STATUS_COLOR[s.status] || 'var(--text-soft)';
+  return `
+    <div class="card" id="suggest-${s.id}">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <span class="tag">${escapeHtml(s.category)}</span>
+          <span class="state-pill" style="margin-left:6px; background:transparent; border:1px solid ${statusColor}; color:${statusColor};">${escapeHtml(s.status)}</span>
+        </div>
+        ${isMine
+          ? `<button class="btn btn-ghost btn-sm" onclick="NRAYO.deleteSuggestion('${s.id}')">삭제</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="NRAYO.reportSuggestion('${s.id}','${s.userId}')">신고</button>`}
+      </div>
+      <div class="muted" style="margin-top:6px;">${escapeHtml(s.nickname)} · ${timeAgo(s.createdAt)}</div>
+      <div style="margin-top:8px; white-space:pre-wrap; font-size:14px; line-height:1.5;">${escapeHtml(s.text)}</div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button class="btn btn-ghost btn-sm" data-role="slike-btn" data-count="${likedBy.length}" onclick="NRAYO.toggleSuggestionLike('${s.id}')">${liked ? '💛' : '🤍'} 저도 원해요 ${likedBy.length}</button>
+        <button class="btn btn-ghost btn-sm" data-role="scomment-count" data-count="${s.commentCount || 0}" onclick="NRAYO.toggleSuggestionComments('${s.id}')">💬 댓글 ${s.commentCount || 0}</button>
+      </div>
+      <div id="scomments-${s.id}" style="display:none; margin-top:10px;"></div>
+    </div>`;
+}
+
+async function toggleSuggestionLike(id) {
+  try {
+    const result = await api(`/suggestions/${id}/like`, 'POST', { userId: state.userId });
+    const btn = document.querySelector(`#suggest-${id} [data-role="slike-btn"]`);
+    if (btn) {
+      let count = parseInt(btn.dataset.count || '0', 10);
+      count = result.liked ? count + 1 : Math.max(0, count - 1);
+      btn.dataset.count = count;
+      btn.textContent = `${result.liked ? '💛' : '🤍'} 저도 원해요 ${count}`;
+    }
+  } catch (e) { toast(e.message); }
+}
+
+async function toggleSuggestionComments(id) {
+  const box = document.getElementById(`scomments-${id}`);
+  if (!box) return;
+  const isOpen = box.style.display !== 'none';
+  if (isOpen) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  await renderSuggestionComments(id);
+}
+
+async function renderSuggestionComments(id) {
+  const box = document.getElementById(`scomments-${id}`);
+  if (!box) return;
+  box.innerHTML = `<div class="muted">불러오는 중...</div>`;
+  try {
+    const data = await api(`/suggestions/${id}/comments`);
+    const commentsHtml = data.comments.map(c => `
+      <div style="padding:8px 0; border-bottom:1px solid var(--line);">
+        <div style="font-weight:700; font-size:13px;">${escapeHtml(c.nickname)}</div>
+        <div style="font-size:13px;">${escapeHtml(c.text)}</div>
+      </div>`).join('') || `<div class="muted" style="padding:6px 0;">아직 댓글이 없어요.</div>`;
+    box.innerHTML = `${commentsHtml}
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <input type="text" id="scomment-input-${id}" placeholder="댓글 달기" style="flex:1;" />
+        <button class="btn btn-primary btn-sm" onclick="NRAYO.submitSuggestionComment('${id}')">등록</button>
+      </div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="muted">댓글을 불러오지 못했어요.</div>`;
+  }
+}
+
+async function submitSuggestionComment(id) {
+  const input = document.getElementById(`scomment-input-${id}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    await api(`/suggestions/${id}/comments`, 'POST', { userId: state.userId, text });
+    await renderSuggestionComments(id);
+    const countBtn = document.querySelector(`#suggest-${id} [data-role="scomment-count"]`);
+    if (countBtn) {
+      const count = parseInt(countBtn.dataset.count || '0', 10) + 1;
+      countBtn.dataset.count = count;
+      countBtn.textContent = `💬 댓글 ${count}`;
+    }
+  } catch (e) { toast(e.message); }
+}
+
+async function deleteSuggestion(id) {
+  if (!confirm('이 건의글을 삭제할까요?')) return;
+  try {
+    await api(`/suggestions/${id}`, 'DELETE', { userId: state.userId });
+    toast('삭제됐어요');
+    loadSuggestions();
+  } catch (e) { toast(e.message); }
+}
+
+async function reportSuggestion(id, targetUserId) {
+  if (!confirm('이 글을 신고할까요? 신고 시 작성자와의 상호작용이 즉시 제한돼요.')) return;
+  try {
+    await api('/safety/report', 'POST', { fromUserId: state.userId, targetUserId, reason: '기타', postId: id });
+    toast('신고가 접수됐어요');
+  } catch (e) { toast(e.message); }
 }
 
 // ---------------- 관리자로 바로 앱 진입 ----------------
@@ -85,6 +483,7 @@ async function adminLogin() {
     const result = await api('/auth/admin-login', 'POST', { key });
     state.userId = result.userId;
     state.nickname = result.nickname;
+    saveSession(result.userId, result.nickname);
     document.getElementById('me-nickname-label').textContent = result.nickname + '님';
     document.getElementById('screen-onboarding').classList.remove('active');
     document.getElementById('main-app').style.display = 'flex';
@@ -131,15 +530,85 @@ function useCurrentLocation() {
 
 // ---------------- 구글 로그인 ----------------
 // 이미 가입된 계정으로 바로 로그인 처리 (온보딩 건너뛰기)
-function enterAppAsExistingUser(userId, nickname) {
+function enterAppAsExistingUser(userId, nickname, opts = {}) {
   state.userId = userId;
   state.nickname = nickname;
+  saveSession(userId, nickname);
+  hideSplash();
   document.getElementById('me-nickname-label').textContent = nickname + '님';
   document.getElementById('screen-onboarding').classList.remove('active');
   document.getElementById('main-app').style.display = 'flex';
   document.getElementById('tabbar').style.display = 'flex';
-  toast(`${nickname}님, 다시 오셨네요!`);
+  if (!opts.silent) toast(`${nickname}님, 다시 오셨네요!`);
   loadToday();
+}
+
+// ---------------- 로그아웃 ----------------
+function logout() {
+  clearSession();
+  try { firebase.auth().signOut(); } catch (e) { /* noop */ }
+  location.reload();
+}
+
+function fromE164Local(e164Phone) {
+  return e164Phone.replace(/^\+82/, '0');
+}
+
+// ---------------- 앱 시작 시 자동 로그인 시도 ----------------
+async function initAutoLogin() {
+  let settled = false;
+  const finishOnboarding = () => { if (!settled) { settled = true; showOnboarding(); } };
+  // 안전장치: 어떤 이유로든 확인이 오래 걸리면 온보딩 화면으로 넘어감
+  const timeoutId = setTimeout(finishOnboarding, 4000);
+
+  const savedUserId = localStorage.getItem(SESSION_USERID_KEY);
+  if (savedUserId) {
+    try {
+      const data = await api(`/auth/me/${savedUserId}`);
+      if (data.user && !data.user.banned) {
+        settled = true;
+        clearTimeout(timeoutId);
+        enterAppAsExistingUser(data.user.id, data.user.nickname, { silent: true });
+        return;
+      }
+      clearSession();
+    } catch (e) {
+      clearSession();
+    }
+  }
+
+  // localStorage에 저장된 세션이 없거나 무효한 경우, Firebase에 남아있는 인증 세션으로 한 번 더 시도
+  try {
+    firebase.auth().onAuthStateChanged(async (fbUser) => {
+      if (settled) return;
+      if (!fbUser) { clearTimeout(timeoutId); finishOnboarding(); return; }
+      try {
+        let existing = null;
+        if (fbUser.phoneNumber) {
+          existing = await api(`/auth/by-phone/${fromE164Local(fbUser.phoneNumber)}`);
+        } else {
+          const isGoogle = fbUser.providerData.some(p => p.providerId === 'google.com');
+          if (isGoogle) existing = await api(`/auth/by-google/${fbUser.uid}`);
+        }
+        if (!existing) { clearTimeout(timeoutId); finishOnboarding(); return; }
+        // 정지(banned)된 계정은 자동 로그인시켜주지 않도록 최신 상태를 한 번 더 확인
+        const meData = await api(`/auth/me/${existing.userId}`);
+        clearTimeout(timeoutId);
+        if (meData.user && !meData.user.banned && !settled) {
+          settled = true;
+          enterAppAsExistingUser(meData.user.id, meData.user.nickname, { silent: true });
+        } else {
+          finishOnboarding();
+        }
+      } catch (e) {
+        clearTimeout(timeoutId);
+        finishOnboarding();
+      }
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    finishOnboarding();
+  }
 }
 
 async function signInWithGoogle() {
@@ -376,6 +845,7 @@ async function signup() {
     });
     state.userId = result.userId;
     state.nickname = nickname;
+    saveSession(result.userId, nickname);
 
     if (obState.photoBase64) {
       try { await api('/auth/photo', 'POST', { userId: result.userId, imageBase64: obState.photoBase64 }); }
@@ -452,7 +922,7 @@ async function loadToday() {
       return;
     }
     list.innerHTML = data.candidates.map(c => renderPersonCard(c)).join('');
-    list.innerHTML += `<button class="btn btn-outline" id="extra-candidates-btn" onclick="NRAYO.loadExtraCandidates()">더 보기 (⭐3 소모)</button>`;
+    list.innerHTML += `<button class="btn btn-premium" id="extra-candidates-btn" onclick="NRAYO.loadExtraCandidates()">⚡ 실시간 새 추천 받기 (⭐3)</button>`;
   } catch (e) { toast(e.message); }
 }
 
@@ -465,7 +935,7 @@ async function loadExtraCandidates() {
 
     const extraHtml = result.candidates.map(c => renderPersonCard(c)).join('');
     list.insertAdjacentHTML('beforeend', extraHtml);
-    list.insertAdjacentHTML('beforeend', `<button class="btn btn-outline" id="extra-candidates-btn" onclick="NRAYO.loadExtraCandidates()">더 보기 (⭐3 소모)</button>`);
+    list.insertAdjacentHTML('beforeend', `<button class="btn btn-premium" id="extra-candidates-btn" onclick="NRAYO.loadExtraCandidates()">⚡ 실시간 새 추천 받기 (⭐3)</button>`);
 
     document.getElementById('star-count').textContent = result.stars;
     toast(result.isAdmin ? '관리자 계정: 별이 소모되지 않아요' : '추천을 더 받았어요');
@@ -636,6 +1106,7 @@ async function openTrioRoom(roomId) {
 
 function leaveTrioRoom() {
   if (state.trioPollTimer) { clearInterval(state.trioPollTimer); state.trioPollTimer = null; }
+  if (state.drawPollTimer) { clearInterval(state.drawPollTimer); state.drawPollTimer = null; }
   showScreen('trio');
 }
 
@@ -689,10 +1160,12 @@ async function sendTrioMessage() {
 // ---------------- TRIO 관계 게임 ----------------
 async function showGame(name) {
   state.currentGame = name;
+  if (state.drawPollTimer) { clearInterval(state.drawPollTimer); state.drawPollTimer = null; }
   const area = document.getElementById('game-area');
   if (!name) { area.innerHTML = ''; return; }
   if (name === 'same5') return renderSame5();
   if (name === 'whosthis') return renderWhosThis();
+  if (name === 'draw') return renderDraw();
 }
 
 async function renderSame5() {
@@ -782,6 +1255,173 @@ async function guessWhosThis() {
   } catch (e) { toast(e.message); }
 }
 
+// ---------------- 그림 맞추기 (캐치마인드 스타일) ----------------
+async function renderDraw() {
+  const area = document.getElementById('game-area');
+  const data = await api(`/trio/${state.currentTrioRoom}/game/draw?userId=${state.userId}`);
+
+  if (!data.round) {
+    area.innerHTML = `
+      <div class="muted" style="margin-bottom:8px;">아직 시작된 라운드가 없어요. 누군가 그림을 그리면 다른 멤버가 맞혀요!</div>
+      <button class="btn btn-primary btn-sm" onclick="NRAYO.startDraw()">🎨 내가 그릴래요 (라운드 시작)</button>
+    `;
+    return;
+  }
+
+  const isDrawer = data.round.drawerUserId === state.userId;
+  const solved = !!data.round.correctUserId;
+
+  if (isDrawer) {
+    area.innerHTML = `
+      <div style="font-weight:800; margin-bottom:6px;">🎨 그릴 단어: <span style="color:var(--accent-dark);">${escapeHtml(data.round.word)}</span></div>
+      <canvas id="draw-canvas" class="draw-canvas" width="300" height="200"></canvas>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button class="btn btn-outline btn-sm" onclick="NRAYO.clearDrawCanvas()">지우기</button>
+        <button class="btn btn-ghost btn-sm" onclick="NRAYO.startDraw()">다른 단어로 새로 시작</button>
+      </div>
+      <div id="draw-guess-feed" class="draw-guess-feed"></div>
+    `;
+    setupDrawCanvas();
+  } else {
+    area.innerHTML = `
+      <div class="muted" style="margin-bottom:6px;">누군가 그림을 그리고 있어요. 뭘까요?</div>
+      <img id="draw-view-img" class="draw-canvas" style="object-fit:contain;" src="${data.round.imageBase64 || ''}" />
+      ${solved
+        ? `<div style="margin-top:8px; font-weight:800; color:var(--accent-dark);">정답: ${escapeHtml(data.round.word)}</div>
+           <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="NRAYO.startDraw()">내가 그릴래요 (새 라운드)</button>`
+        : `<div style="display:flex; gap:8px; margin-top:8px;">
+             <input type="text" id="draw-guess-input" placeholder="정답 추측" style="flex:1; padding:10px; border-radius:var(--radius-sm); border:1.5px solid var(--line);" />
+             <button class="btn btn-primary btn-sm" onclick="NRAYO.submitDrawGuess()">제출</button>
+           </div>`}
+      <div id="draw-guess-feed" class="draw-guess-feed"></div>
+    `;
+  }
+
+  renderDrawGuesses(data.guesses);
+
+  if (!solved) {
+    if (state.drawPollTimer) clearInterval(state.drawPollTimer);
+    state.drawPollTimer = setInterval(pollDraw, 2000); // 2초마다 그림/추측 폴링 (실시간에 가깝게)
+  }
+}
+
+async function pollDraw() {
+  if (!state.currentTrioRoom || state.currentGame !== 'draw') {
+    if (state.drawPollTimer) { clearInterval(state.drawPollTimer); state.drawPollTimer = null; }
+    return;
+  }
+  try {
+    const data = await api(`/trio/${state.currentTrioRoom}/game/draw?userId=${state.userId}`);
+    if (!data.round) { clearInterval(state.drawPollTimer); state.drawPollTimer = null; return; }
+
+    renderDrawGuesses(data.guesses);
+    const isDrawer = data.round.drawerUserId === state.userId;
+    if (!isDrawer) {
+      const img = document.getElementById('draw-view-img');
+      if (img && data.round.imageBase64) img.src = data.round.imageBase64;
+    }
+
+    if (data.round.correctUserId) {
+      clearInterval(state.drawPollTimer);
+      state.drawPollTimer = null;
+      renderDraw(); // 정답 공개 화면으로 전환
+    }
+  } catch (e) { /* 폴링 실패는 조용히 무시하고 다음 주기에 재시도 */ }
+}
+
+function renderDrawGuesses(guesses) {
+  const feed = document.getElementById('draw-guess-feed');
+  if (!feed) return;
+  feed.innerHTML = guesses.length
+    ? guesses.slice().reverse().map(g => `
+        <div class="draw-guess-item ${g.correct ? 'correct' : ''}">${g.correct ? '✅' : '💬'} ${escapeHtml(g.nickname || '익명')}: ${escapeHtml(g.guess)}</div>
+      `).join('')
+    : `<div class="muted">아직 추측이 없어요</div>`;
+}
+
+async function startDraw() {
+  try {
+    await api(`/trio/${state.currentTrioRoom}/game/draw/start`, 'POST', { userId: state.userId });
+    toast('새 라운드가 시작됐어요! 그려보세요 🎨');
+    renderDraw();
+  } catch (e) { toast(e.message); }
+}
+
+function setupDrawCanvas() {
+  const canvas = document.getElementById('draw-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#4A342E';
+  let drawing = false;
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    drawing = true;
+    const p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drawing) return;
+    const p = getPos(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  });
+  const endStroke = () => {
+    if (!drawing) return;
+    drawing = false;
+    uploadDrawSnapshot();
+  };
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointerleave', endStroke);
+}
+
+async function uploadDrawSnapshot() {
+  const canvas = document.getElementById('draw-canvas');
+  if (!canvas) return;
+  try {
+    const imageBase64 = canvas.toDataURL('image/png');
+    await api(`/trio/${state.currentTrioRoom}/game/draw/update`, 'POST', { userId: state.userId, imageBase64 });
+  } catch (e) { /* 업로드 한 번 실패해도 계속 그릴 수 있게 조용히 무시 */ }
+}
+
+function clearDrawCanvas() {
+  const canvas = document.getElementById('draw-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  uploadDrawSnapshot();
+}
+
+async function submitDrawGuess() {
+  const input = document.getElementById('draw-guess-input');
+  const guess = input.value.trim();
+  if (!guess) return;
+  try {
+    const result = await api(`/trio/${state.currentTrioRoom}/game/draw/guess`, 'POST', {
+      userId: state.userId, nickname: state.nickname || '', guess
+    });
+    input.value = '';
+    if (result.correct) {
+      toast('🎉 정답이에요!');
+      renderDraw();
+    } else {
+      toast('아쉽지만 틀렸어요');
+      const data = await api(`/trio/${state.currentTrioRoom}/game/draw?userId=${state.userId}`);
+      renderDrawGuesses(data.guesses);
+    }
+  } catch (e) { toast(e.message); }
+}
+
 // ---------------- MEET ----------------
 async function createMeet() {
   const purpose = document.getElementById('meet-purpose').value.trim();
@@ -825,19 +1465,94 @@ async function loadMe() {
     <div style="margin-top:14px;" class="muted">친구 ${state.friends.length}명 · Meet 참여 ${data.user.meetJoined}회</div>
   `;
 
+  const kakaoInput = document.getElementById('kakao-id-input');
+  if (kakaoInput && !kakaoInput.matches(':focus')) kakaoInput.value = data.user.kakaoId || '';
+
+  let exchanges = [];
+  try {
+    const exData = await api(`/kakao/exchanges/${state.userId}`);
+    exchanges = exData.exchanges || [];
+  } catch (e) { /* 조회 실패해도 친구 목록 자체는 보여줌 */ }
+
   const friendListEl = document.getElementById('me-friends-list');
   if (friendListEl) {
     friendListEl.innerHTML = state.friends.length
       ? state.friends.map(f => `
-          <div class="card" style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px;">
-            <span style="font-weight:700;">${f.nickname}</span>
-            <button class="btn btn-ghost btn-sm" onclick="NRAYO.rateManner('${f.userId}','${f.nickname}')">매너 평가하기</button>
+          <div class="card" style="display:flex; flex-direction:column; gap:8px; padding:12px 16px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <span style="font-weight:700;">${f.nickname}</span>
+              <button class="btn btn-ghost btn-sm" onclick="NRAYO.rateManner('${f.userId}','${f.nickname}')">매너 평가하기</button>
+            </div>
+            <div data-role="kakao-exchange-area">${renderKakaoExchangeArea(f, exchanges)}</div>
           </div>`).join('')
       : `<p class="muted">아직 친구가 없어요.</p>`;
   }
 
   await loadStarPackages();
   renderBoostCard(data.profile.boostedUntil);
+}
+
+// ---------------- 카카오톡 ID 교환 (유료, 상호 동의) ----------------
+function findKakaoExchange(friendUserId, exchanges) {
+  return exchanges.find(ex => ex.fromUserId === friendUserId || ex.toUserId === friendUserId) || null;
+}
+
+function renderKakaoExchangeArea(friend, exchanges) {
+  const ex = findKakaoExchange(friend.userId, exchanges);
+
+  if (!ex) {
+    return `<button class="btn btn-premium btn-sm" onclick="NRAYO.requestKakaoExchange('${friend.userId}')">✨ 카톡 교환 요청 (⭐5)</button>`;
+  }
+  if (ex.status === 'PENDING' && ex.fromUserId === state.userId) {
+    return `<span class="premium-badge">요청 보냄 · 수락 대기중</span>`;
+  }
+  if (ex.status === 'PENDING' && ex.toUserId === state.userId) {
+    return `
+      <span class="muted" style="font-size:12px;">${escapeHtml(friend.nickname)}님이 카톡 교환을 요청했어요</span>
+      <div style="display:flex; gap:8px; margin-top:4px;">
+        <button class="btn btn-premium btn-sm" onclick="NRAYO.respondKakaoExchange('${ex.id}', true)">수락</button>
+        <button class="btn btn-ghost btn-sm" onclick="NRAYO.respondKakaoExchange('${ex.id}', false)">거절</button>
+      </div>`;
+  }
+  if (ex.status === 'ACCEPTED') {
+    const myId = ex.fromUserId === state.userId ? ex.toKakaoIdCache : ex.fromKakaoIdCache;
+    return `<div class="kakao-id-reveal">💬 ${escapeHtml(friend.nickname)}님 카톡: ${myId ? escapeHtml(myId) : '(상대가 아직 카톡 ID를 등록하지 않았어요)'}</div>`;
+  }
+  if (ex.status === 'DECLINED') {
+    return `<span class="muted" style="font-size:12px;">교환 요청이 거절됐어요</span>`;
+  }
+  return '';
+}
+
+async function requestKakaoExchange(friendUserId) {
+  try {
+    const result = await api('/kakao/request', 'POST', { fromUserId: state.userId, toUserId: friendUserId });
+    document.getElementById('star-count').textContent = result.stars;
+    toast('카톡 교환 요청을 보냈어요');
+    loadMe();
+  } catch (e) { toast(e.message); }
+}
+
+async function respondKakaoExchange(exchangeId, accept) {
+  try {
+    const result = await api(`/kakao/${exchangeId}/respond`, 'POST', { userId: state.userId, accept });
+    if (accept) {
+      toast(result.fromKakaoId || result.toKakaoId ? '카톡 교환이 완료됐어요!' : '수락했어요 (상대가 아직 카톡 ID 미등록)');
+    } else {
+      toast('요청을 거절했어요');
+    }
+    loadMe();
+  } catch (e) { toast(e.message); }
+}
+
+async function saveKakaoId() {
+  const input = document.getElementById('kakao-id-input');
+  const kakaoId = (input.value || '').trim();
+  if (!kakaoId) { toast('카카오톡 ID를 입력해주세요'); return; }
+  try {
+    await api('/kakao/set-id', 'POST', { userId: state.userId, kakaoId });
+    toast('카카오톡 ID를 저장했어요');
+  } catch (e) { toast(e.message); }
 }
 
 // ---------------- 프로필 우선노출 (부스트) ----------------
@@ -926,6 +1641,7 @@ setupChips('ob-interests', state.interests);
 
 setupTerms();
 setupSingleChip('ob-gender', 'ob-cta-3', (v) => { obState.gender = v; });
+setupSingleChip('suggest-category-chips', null, () => {});
 obBindInput('ob-birthyear', 'ob-cta-4');
 obBindInput('ob-region', 'ob-cta-5');
 obBindInput('ob-nickname', 'ob-cta-6');
@@ -938,8 +1654,17 @@ window.NRAYO = {
   obNext, obPrev, sendVerifyCode, confirmVerifyCode, previewPhoto,
   saveContacts, skipContacts, rateManner,
   leaveTrioRoom, proposeCasual, showGame, submitSame5, setWhosThis, guessWhosThis,
-  loadExtraCandidates, chargeStars, signInWithGoogle, adminLogin, buyBoost, getIcebreaker, useCurrentLocation
+  startDraw, clearDrawCanvas, submitDrawGuess,
+  loadExtraCandidates, chargeStars, signInWithGoogle, adminLogin, buyBoost, getIcebreaker, useCurrentLocation,
+  logout,
+  previewFeedPhoto, submitPost, loadFeed, toggleLike, toggleComments, submitComment, deletePost, reportPost,
+  toggleRecruitField, toggleJoin,
+  submitSuggestion, loadSuggestions, toggleSuggestionLike, toggleSuggestionComments, submitSuggestionComment,
+  deleteSuggestion, reportSuggestion,
+  saveKakaoId, requestKakaoExchange, respondKakaoExchange
 };
+
+initAutoLogin();
 window.sendFriendRequest = sendFriendRequest;
 window.openQuiz = openQuiz;
 window.answerQuiz = answerQuiz;

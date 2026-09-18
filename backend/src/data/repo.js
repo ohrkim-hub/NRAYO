@@ -166,8 +166,119 @@ module.exports = {
   addMannerRating, getMannerScore,
   createPayment, creditStars,
   saveGameAnswer, getGameAnswers,
-  saveWhosThisQuestion, getWhosThisQuestion, saveWhosThisGuess, getWhosThisGuesses
+  saveWhosThisQuestion, getWhosThisQuestion, saveWhosThisGuess, getWhosThisGuesses,
+  saveDrawRound, getDrawRound, updateDrawRound, addDrawGuess, listDrawGuesses, clearDrawGuesses,
+  createPost, getPost, listRecentPosts, deletePost, toggleLike, addComment, listComments, toggleJoin,
+  createSuggestion, getSuggestion, listSuggestions, deleteSuggestion, toggleSuggestionLike,
+  addSuggestionComment, listSuggestionComments, updateSuggestionStatus,
+  createKakaoExchange, getKakaoExchange, updateKakaoExchange, listKakaoExchangesForUser
 };
+
+// ---------------- 건의사항 (유저 제안/버그신고 게시판) ----------------
+async function createSuggestion(id, data) {
+  await db.collection('suggestions').doc(id).set(data);
+}
+async function getSuggestion(id) {
+  const snap = await db.collection('suggestions').doc(id).get();
+  return snap.exists ? snap.data() : null;
+}
+async function listSuggestions(limit = 100) {
+  const snap = await db.collection('suggestions').orderBy('createdAt', 'desc').limit(limit).get();
+  return snap.docs.map(d => d.data());
+}
+async function deleteSuggestion(id) {
+  const ref = db.collection('suggestions').doc(id);
+  const commentsSnap = await ref.collection('comments').get();
+  if (!commentsSnap.empty) {
+    const batch = db.batch();
+    commentsSnap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+  }
+  await ref.delete();
+}
+async function toggleSuggestionLike(id, userId) {
+  const ref = db.collection('suggestions').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  const likedBy = snap.data().likedBy || [];
+  const nowLiked = !likedBy.includes(userId);
+  await ref.update({ likedBy: nowLiked ? FieldValue.arrayUnion(userId) : FieldValue.arrayRemove(userId) });
+  return nowLiked;
+}
+async function addSuggestionComment(id, commentId, data) {
+  const ref = db.collection('suggestions').doc(id);
+  await ref.collection('comments').doc(commentId).set(data);
+  await ref.update({ commentCount: FieldValue.increment(1) });
+}
+async function listSuggestionComments(id) {
+  const snap = await db.collection('suggestions').doc(id).collection('comments').orderBy('createdAt').get();
+  return snap.docs.map(d => d.data());
+}
+async function updateSuggestionStatus(id, status) {
+  await db.collection('suggestions').doc(id).set({ status }, { merge: true });
+}
+
+// ---------------- 동네생활 (게시판) ----------------
+// likedBy는 배열 필드로 post 문서에 직접 저장(별도 좋아요 서브컬렉션 없이 가볍게 처리)
+async function createPost(postId, data) {
+  await db.collection('posts').doc(postId).set(data);
+}
+async function getPost(postId) {
+  const snap = await db.collection('posts').doc(postId).get();
+  return snap.exists ? snap.data() : null;
+}
+// 지역 필터 없이 최신순 전체 조회 (초기엔 유저가 적어 지역별로 나누면 더 썰렁해 보이므로,
+// 지역은 배지로만 보여주고 피드 자체는 통합. 유저가 늘어나면 지역 필터 추가 검토)
+async function listRecentPosts(limit = 50) {
+  const snap = await db.collection('posts').orderBy('createdAt', 'desc').limit(limit).get();
+  return snap.docs.map(d => d.data());
+}
+async function deletePost(postId) {
+  // Firestore는 상위 문서를 지워도 서브컬렉션(comments)이 자동으로 같이 삭제되지 않으므로 먼저 정리
+  const postRef = db.collection('posts').doc(postId);
+  const commentsSnap = await postRef.collection('comments').get();
+  if (!commentsSnap.empty) {
+    const batch = db.batch();
+    commentsSnap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+  }
+  await postRef.delete();
+}
+async function toggleLike(postId, userId) {
+  const postRef = db.collection('posts').doc(postId);
+  const snap = await postRef.get();
+  if (!snap.exists) return null;
+  const likedBy = snap.data().likedBy || [];
+  const nowLiked = !likedBy.includes(userId);
+  await postRef.update({
+    likedBy: nowLiked ? FieldValue.arrayUnion(userId) : FieldValue.arrayRemove(userId)
+  });
+  return nowLiked;
+}
+// 모집글(postType 'recruit')의 "참여하기" 토글. 좋아요와 달리 닉네임까지 같이 저장해야 해서
+// (참여자 명단을 이름으로 보여줘야 함) arrayUnion/arrayRemove 대신 읽고 다시 쓰는 방식 사용
+async function toggleJoin(postId, userId, nickname) {
+  const postRef = db.collection('posts').doc(postId);
+  const snap = await postRef.get();
+  if (!snap.exists) return null;
+  const participants = snap.data().participants || [];
+  const alreadyJoined = participants.some(p => p.userId === userId);
+  const newParticipants = alreadyJoined
+    ? participants.filter(p => p.userId !== userId)
+    : [...participants, { userId, nickname, joinedAt: new Date().toISOString() }];
+  await postRef.update({ participants: newParticipants });
+  return { joined: !alreadyJoined, participants: newParticipants };
+}
+
+async function addComment(postId, commentId, data) {
+  const postRef = db.collection('posts').doc(postId);
+  await postRef.collection('comments').doc(commentId).set(data);
+  await postRef.update({ commentCount: FieldValue.increment(1) });
+}
+async function listComments(postId) {
+  const snap = await db.collection('posts').doc(postId).collection('comments').orderBy('createdAt').get();
+  return snap.docs.map(d => d.data());
+}
 
 // ---------------- 내 모든 대화방 (1:1 DM + TRIO) 조회 ----------------
 async function listRoomsForUser(userId) {
@@ -228,6 +339,33 @@ async function getWhosThisGuesses(roomId) {
   return snap.docs.map(d => d.data());
 }
 
+// ---------------- TRIO 관계게임: 그림 맞추기 (캐치마인드 스타일) ----------------
+async function saveDrawRound(roomId, data) {
+  await db.collection('rooms').doc(roomId).collection('draw').doc('current').set(data);
+}
+async function getDrawRound(roomId) {
+  const snap = await db.collection('rooms').doc(roomId).collection('draw').doc('current').get();
+  return snap.exists ? snap.data() : null;
+}
+async function updateDrawRound(roomId, partial) {
+  await db.collection('rooms').doc(roomId).collection('draw').doc('current').set(partial, { merge: true });
+}
+async function addDrawGuess(roomId, guessId, data) {
+  await db.collection('rooms').doc(roomId).collection('drawGuesses').doc(guessId).set(data);
+}
+async function listDrawGuesses(roomId) {
+  const snap = await db.collection('rooms').doc(roomId).collection('drawGuesses').orderBy('createdAt').get();
+  return snap.docs.map(d => d.data());
+}
+async function clearDrawGuesses(roomId) {
+  const snap = await db.collection('rooms').doc(roomId).collection('drawGuesses').get();
+  if (!snap.empty) {
+    const batch = db.batch();
+    snap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+  }
+}
+
 // ---------------- 지인 피하기 (연락처 기반) ----------------
 async function saveContacts(userId, hashedPhones) {
   await db.collection('contacts').doc(userId).set({ userId, hashedPhones, updatedAt: new Date().toISOString() });
@@ -251,4 +389,25 @@ async function addMannerRating(targetUserId, raterUserId, score) {
 async function getMannerScore(targetUserId) {
   const user = await getUser(targetUserId);
   return user ? { mannerScore: user.mannerScore || null, mannerRatingCount: user.mannerRatingCount || 0 } : null;
+}
+
+// ---------------- 카카오톡 ID 교환 (유료, 상호 동의) ----------------
+// 별을 써서 요청을 보내고, 상대가 수락해야만 서로의 카카오톡 ID가 보임 (일방적 공개 아님)
+async function createKakaoExchange(id, data) {
+  await db.collection('kakaoExchanges').doc(id).set(data);
+}
+async function getKakaoExchange(id) {
+  const snap = await db.collection('kakaoExchanges').doc(id).get();
+  return snap.exists ? snap.data() : null;
+}
+async function updateKakaoExchange(id, partial) {
+  await db.collection('kakaoExchanges').doc(id).set(partial, { merge: true });
+}
+// 지역 필터처럼 복합 인덱스를 피하기 위해 where 절 하나짜리 쿼리 두 번으로 나눠서 합침
+async function listKakaoExchangesForUser(userId) {
+  const [sentSnap, receivedSnap] = await Promise.all([
+    db.collection('kakaoExchanges').where('fromUserId', '==', userId).get(),
+    db.collection('kakaoExchanges').where('toUserId', '==', userId).get()
+  ]);
+  return [...sentSnap.docs.map(d => d.data()), ...receivedSnap.docs.map(d => d.data())];
 }

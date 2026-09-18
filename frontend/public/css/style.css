@@ -11,6 +11,9 @@
   --line: #F0D9C8;
   --danger: #D9534F;
   --success: #6FA96F;
+  --premium-gold: #C9A227;
+  --premium-gold-dark: #6B4E00;
+  --premium-bg: linear-gradient(135deg, #FFF6DE, #F5E2A8);
   --radius: 18px;
   --radius-sm: 10px;
   --shadow: 0 6px 20px rgba(74, 52, 46, 0.08);
@@ -77,6 +80,26 @@ html, body {
   display: none;
 }
 .screen.active { display: block; }
+
+#screen-splash.active {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 14px;
+  padding: 20px;
+}
+#screen-splash .ob-title { margin: 0; }
+.splash-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  animation: splash-spin 0.8s linear infinite;
+}
+@keyframes splash-spin { to { transform: rotate(360deg); } }
 
 .hero-question {
   font-size: 24px;
@@ -545,4 +568,71 @@ html, body {
   font-size: 13px;
   font-family: inherit;
   resize: none;
+}
+
+/* ---------- 프리미엄(별 소모) 요소 - 공지사항 배너, 카톡 교환 등 ---------- */
+.notice-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--premium-bg);
+  border: 1px solid #EBD48A;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--premium-gold-dark);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+.notice-banner .notice-icon { font-size: 15px; flex-shrink: 0; }
+.premium-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: linear-gradient(135deg, #F5E2A8, #E0BE5E);
+  color: var(--premium-gold-dark);
+  font-weight: 800;
+  font-size: 10.5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.btn-premium {
+  background: linear-gradient(135deg, #F0C94A, #C9A227);
+  color: #4A3600;
+  border: none;
+  font-weight: 800;
+}
+.btn-premium:hover { filter: brightness(1.05); }
+.kakao-exchange-card {
+  border: 1px solid #EBD48A;
+  background: linear-gradient(135deg, #FFFBF0, #FFF6DE);
+}
+.draw-canvas {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  touch-action: none;
+  cursor: crosshair;
+}
+.draw-guess-feed {
+  max-height: 120px;
+  overflow-y: auto;
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+.draw-guess-feed .draw-guess-item { padding: 3px 0; }
+.draw-guess-feed .draw-guess-item.correct { color: var(--success); font-weight: 800; }
+.kakao-id-reveal {
+  font-weight: 800;
+  color: var(--premium-gold-dark);
+  background: #fff;
+  border: 1px dashed #E0BE5E;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-top: 6px;
+  font-size: 14px;
+  letter-spacing: 0.2px;
 }

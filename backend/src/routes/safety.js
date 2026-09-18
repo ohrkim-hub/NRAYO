@@ -11,7 +11,7 @@ const REPORT_REASONS = [
 // POST /safety/report
 router.post('/report', async (req, res) => {
   try {
-    const { fromUserId, targetUserId, reason, messageId = null, roomId = null } = req.body;
+    const { fromUserId, targetUserId, reason, messageId = null, roomId = null, postId = null } = req.body;
 
     const [fromUser, targetUser] = await Promise.all([repo.getUser(fromUserId), repo.getUser(targetUserId)]);
     if (!fromUser || !targetUser) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
@@ -20,7 +20,7 @@ router.post('/report', async (req, res) => {
     await repo.createReport(reportId, {
       id: reportId, fromUserId, targetUserId,
       reason: REPORT_REASONS.includes(reason) ? reason : '기타',
-      messageId, roomId, status: 'NEW', createdAt: new Date().toISOString()
+      messageId, roomId, postId, status: 'NEW', createdAt: new Date().toISOString()
     });
 
     const blockId = nanoid();

@@ -43,6 +43,8 @@
     <div class="tabs">
       <div class="tab active" data-tab="users" onclick="Admin.switchTab('users')">회원 (<span id="count-users">0</span>)</div>
       <div class="tab" data-tab="reports" onclick="Admin.switchTab('reports')">신고 (<span id="count-reports">0</span>)</div>
+      <div class="tab" data-tab="posts" onclick="Admin.switchTab('posts')">동네생활 (<span id="count-posts">0</span>)</div>
+      <div class="tab" data-tab="suggestions" onclick="Admin.switchTab('suggestions')">건의사항 (<span id="count-suggestions">0</span>)</div>
     </div>
 
     <div id="tab-users">
@@ -56,6 +58,23 @@
       <table>
         <thead><tr><th>사유</th><th>신고자</th><th>대상</th><th>일시</th><th>상태</th><th>조치</th></tr></thead>
         <tbody id="reports-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="tab-posts" style="display:none;">
+      <div style="margin-bottom:12px; display:flex; justify-content:flex-end;">
+        <button class="btn btn-ghost btn-sm" onclick="Admin.seedPosts()">🌱 시드 콘텐츠 등록</button>
+      </div>
+      <table>
+        <thead><tr><th>작성자</th><th>지역</th><th>내용</th><th>사진</th><th>좋아요</th><th>댓글</th><th>작성일</th><th>조치</th></tr></thead>
+        <tbody id="posts-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="tab-suggestions" style="display:none;">
+      <table>
+        <thead><tr><th>카테고리</th><th>내용</th><th>작성자</th><th>공감</th><th>댓글</th><th>작성일</th><th>상태</th><th>조치</th></tr></thead>
+        <tbody id="suggestions-tbody"></tbody>
       </table>
     </div>
   </div>
