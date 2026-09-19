@@ -2,6 +2,7 @@ const express = require('express');
 const { nanoid } = require('nanoid');
 const repo = require('../data/repo');
 const { SEED_POSTS } = require('../data/seedPosts');
+const { sendPushToUser } = require('../lib/push');
 
 const router = express.Router();
 const SEED_SYSTEM_USER_ID = 'system-nrayojigi';
@@ -177,6 +178,16 @@ router.post('/suggestions/:id/status', requireAdmin, async (req, res) => {
     const { status } = req.body;
     if (!status) return res.status(400).json({ error: 'status는 필수입니다.' });
     await repo.updateSuggestionStatus(req.params.id, status);
+
+    const suggestion = await repo.getSuggestion(req.params.id);
+    if (suggestion && suggestion.userId) {
+      sendPushToUser(suggestion.userId, {
+        title: '너랑요',
+        body: `내 건의사항이 '${status}' 상태로 바뀌었어요.`,
+        data: { type: 'suggestion-status', suggestionId: req.params.id }
+      });
+    }
+
     res.json({ id: req.params.id, status });
   } catch (e) {
     console.error(e);

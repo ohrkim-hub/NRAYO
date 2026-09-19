@@ -9,9 +9,10 @@
 <meta name="theme-color" content="#E8825A" />
 <link rel="stylesheet" href="css/style.css" />
 
-<!-- Firebase Auth (구글 로그인용) -->
+<!-- Firebase Auth (구글 로그인용) + Cloud Messaging (알림용) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js"></script>
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyA7KsTABG4UfAkSmD6lk_vkL0gEwwKg45s",
@@ -23,6 +24,9 @@
     measurementId: "G-YWS7WFF41P"
   };
   firebase.initializeApp(firebaseConfig);
+  // 알림(FCM) 사용하려면 Firebase 콘솔 > 프로젝트 설정 > 클라우드 메시징 > 웹 푸시 인증서에서
+  // VAPID 키를 발급받아 아래에 넣어야 함 (README 참고). 비워두면 알림 기능만 자동으로 꺼짐.
+  const FCM_VAPID_KEY = "";
 </script>
 </head>
 <body>
@@ -218,6 +222,10 @@
         <div class="chip" data-v="게임">게임</div>
         <div class="chip" data-v="독서">독서</div>
       </div>
+      <div class="field" style="margin-top:16px;">
+        <label style="font-size:12px; color:var(--text-soft);">🎁 친구 초대 코드 (선택, 있으면 별 3개 추가 지급)</label>
+        <input type="text" id="ob-referral-code" class="ob-input" maxlength="6" placeholder="예: AB3XY9" style="text-transform:uppercase;" />
+      </div>
       <div class="ob-spacer"></div>
       <button class="btn btn-primary ob-cta" id="ob-cta-10" onclick="NRAYO.signup()" disabled>너랑요 시작하기</button>
     </div>
@@ -319,6 +327,7 @@
         </label>
         <div class="field" id="feed-place-field" style="display:none; margin:10px 0 0;">
           <input type="text" id="feed-place-name" maxlength="40" placeholder="어디 가고 싶어요? (예: 불당동 스타벅스)" />
+          <input type="number" id="feed-capacity" min="2" max="30" placeholder="최대 인원 (선택, 2~30명)" style="margin-top:8px;" />
         </div>
         <button class="btn btn-primary" style="margin-top:12px;" onclick="NRAYO.submitPost()">글 남기기</button>
       </div>
@@ -368,6 +377,9 @@
 
       <div class="section-title">별 충전</div>
       <div class="card" id="star-packages"></div>
+
+      <div class="section-title">🎁 친구 초대</div>
+      <div class="card" id="referral-card">불러오는 중...</div>
 
       <div class="section-title">프로필 우선노출</div>
       <div class="card" id="boost-card"></div>

@@ -4,6 +4,7 @@
 const express = require('express');
 const { nanoid } = require('nanoid');
 const repo = require('../data/repo');
+const { sendPushToUser } = require('../lib/push');
 
 const router = express.Router();
 
@@ -89,6 +90,13 @@ router.post('/request', async (req, res) => {
     await repo.createKakaoExchange(exchangeId, exchange);
 
     const newStars = fromUser.isAdmin ? fromUser.stars : await repo.creditStars(fromUserId, -KAKAO_EXCHANGE_COST);
+
+    sendPushToUser(toUserId, {
+      title: '너랑요',
+      body: `${fromUser.nickname}님이 카카오톡 교환을 요청했어요.`,
+      data: { type: 'kakao-request', exchangeId }
+    });
+
     res.status(201).json({ exchange, stars: fromUser.isAdmin ? '무한' : newStars });
   } catch (e) {
     console.error(e);
@@ -120,6 +128,14 @@ router.post('/:exchangeId/respond', async (req, res) => {
       update.toKakaoIdCache = toKakaoId;
     }
     await repo.updateKakaoExchange(exchange.id, update);
+
+    if (accept) {
+      sendPushToUser(exchange.fromUserId, {
+        title: '너랑요',
+        body: `${exchange.toNickname}님이 카카오톡 교환을 수락했어요!`,
+        data: { type: 'kakao-accepted', exchangeId: exchange.id }
+      });
+    }
 
     res.json({ status, fromKakaoId, toKakaoId });
   } catch (e) {

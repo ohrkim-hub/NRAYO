@@ -1,6 +1,30 @@
 // Bump CACHE_NAME on every deploy to avoid stale cache
-const CACHE_NAME = 'nrayo-v0.5.0';
+const CACHE_NAME = 'nrayo-v0.7.0';
 const ASSETS = ['./index.html', './css/style.css', './js/app.js', './manifest.json', './icons/icon.svg'];
+
+// ---------------- FCM 백그라운드 알림 ----------------
+// 앱이 꺼져있거나 다른 탭에 있을 때도 푸시 알림이 뜨도록 서비스워커에서 Firebase Messaging을 초기화
+// (VAPID 키가 없어서 클라이언트가 토큰을 발급받지 않으면 이 부분은 그냥 조용히 아무 일도 안 함)
+try {
+  importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
+  importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js');
+  firebase.initializeApp({
+    apiKey: "AIzaSyA7KsTABG4UfAkSmD6lk_vkL0gEwwKg45s",
+    authDomain: "nrayo-3c940.firebaseapp.com",
+    projectId: "nrayo-3c940",
+    storageBucket: "nrayo-3c940.firebasestorage.app",
+    messagingSenderId: "761047791567",
+    appId: "1:761047791567:web:16b947455d90d5dbfbc4ba"
+  });
+  const messaging = firebase.messaging();
+  messaging.onBackgroundMessage((payload) => {
+    const title = (payload.notification && payload.notification.title) || '너랑요';
+    const body = (payload.notification && payload.notification.body) || '새 알림이 도착했어요';
+    self.registration.showNotification(title, { body, icon: './icons/icon.svg' });
+  });
+} catch (e) {
+  // 구형 브라우저 등에서 importScripts가 실패해도 캐싱/오프라인 기능에는 영향 없음
+}
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));

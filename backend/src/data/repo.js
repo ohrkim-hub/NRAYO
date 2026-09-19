@@ -86,6 +86,9 @@ async function getRoomMembers(roomId) {
   const snap = await db.collection('rooms').doc(roomId).collection('members').get();
   return snap.docs.map(d => d.data());
 }
+async function removeRoomMember(roomId, userId) {
+  await db.collection('rooms').doc(roomId).collection('members').doc(userId).delete();
+}
 async function addRoomMessage(roomId, message) {
   await db.collection('rooms').doc(roomId).collection('messages').doc(message.id).set(message);
 }
@@ -153,10 +156,11 @@ async function resolveReport(reportId, status) {
 module.exports = {
   FieldValue,
   createUser, getUser, updateUser, findUserByPhone, findUserByGoogleUid, listUsersByRegionExcept,
+  findUserByReferralCode, countUsersReferredBy,
   createProfile, getProfile, updateProfile,
   addQuizAttempt, countAttempts,
   createFriendRequest, getFriendRequest, updateFriendRequest, createFriendship,
-  createRoom, getRoom, updateRoom, addRoomMembers, getRoomMembers, addRoomMessage, getRoomMessages,
+  createRoom, getRoom, updateRoom, addRoomMembers, getRoomMembers, removeRoomMember, addRoomMessage, getRoomMessages,
   listRoomsForUser,
   createMeet, getMeet, addMeetParticipant, getMeetParticipants, updateMeetParticipant,
   createReport, listReports, createBlock,
@@ -297,6 +301,16 @@ async function listRoomsForUser(userId) {
 async function findUserByGoogleUid(googleUid) {
   const snap = await db.collection('users').where('googleUid', '==', googleUid).limit(1).get();
   return snap.empty ? null : snap.docs[0].data();
+}
+
+// ---------------- 친구 초대 (추천인 코드) ----------------
+async function findUserByReferralCode(referralCode) {
+  const snap = await db.collection('users').where('referralCode', '==', referralCode).limit(1).get();
+  return snap.empty ? null : snap.docs[0].data();
+}
+async function countUsersReferredBy(userId) {
+  const snap = await db.collection('users').where('referredBy', '==', userId).get();
+  return snap.size;
 }
 
 // ---------------- 결제 / 재화 ----------------

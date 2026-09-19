@@ -7,6 +7,22 @@ const router = express.Router();
 
 const ADMIN_KEY = process.env.ADMIN_KEY || 'nrayo-admin-2026';
 
+// ---------------- 친구 초대 (추천인 코드) ----------------
+const REFERRAL_REFERRER_REWARD = 5; // 초대한 사람이 받는 별
+const REFERRAL_NEW_USER_BONUS = 3;  // 초대 코드로 가입한 사람이 추가로 받는 별
+const REFERRAL_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 헷갈리는 0/O, 1/I/L 제외
+
+async function generateUniqueReferralCode() {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let code = '';
+    for (let i = 0; i < 6; i++) code += REFERRAL_CODE_CHARS[Math.floor(Math.random() * REFERRAL_CODE_CHARS.length)];
+    const existing = await repo.findUserByReferralCode(code);
+    if (!existing) return code;
+  }
+  // 5번 시도해도 충돌하면(사실상 불가능한 확률) userId 일부를 붙여서라도 고유값 보장
+  return `${nanoid(6)}`.toUpperCase();
+}
+
 // Firebase Phone Auth는 E.164 형식(+8210...)을 쓰므로 국내 표기(010...)와 서로 변환
 function fromE164(e164Phone) {
   return e164Phone.replace(/^\+82/, '0');
@@ -54,7 +70,7 @@ router.post('/signup', async (req, res) => {
     const {
       phone, birthYear, region, nickname, gender = '선택안함', bio = '', prompts = [],
       interests = [], purpose = [], termsAgreed = false, googleUid = null, googleEmail = null,
-      phoneIdToken = null
+      phoneIdToken = null, referralCode = null
     } = req.body;
 
     if (!phone || !birthYear || !region || !nickname) {
@@ -100,22 +116,42 @@ router.post('/signup', async (req, res) => {
       }
     }
 
+    // 초대 코드가 유효하면(존재 + 본인 아님) 신규 유저 보너스 별 + 추천인 별 적립을 함께 처리
+    let referrer = null;
+    const trimmedReferralCode = referralCode && referralCode.trim() ? referralCode.trim().toUpperCase() : null;
+    if (trimmedReferralCode) {
+      const found = await repo.findUserByReferralCode(trimmedReferralCode);
+      if (found && found.phone !== phone) referrer = found;
+    }
+
     const userId = nanoid();
     const now = new Date().toISOString();
+    const myReferralCode = await generateUniqueReferralCode();
+    const startingStars = 5 + (referrer ? REFERRAL_NEW_USER_BONUS : 0);
 
     const user = {
       id: userId, phone, birthYear: Number(birthYear), region, nickname, gender,
       googleUid, googleEmail,
       verified: true, createdAt: now, banned: false, isAdmin: false,
       meetJoined: 0, meetCompleted: 0, lateCancelCount: 0, noShowCount: 0,
-      attendanceRate: 100, penaltyLevel: 0, stars: 5
+      attendanceRate: 100, penaltyLevel: 0, stars: startingStars,
+      referralCode: myReferralCode, referredBy: referrer ? referrer.id : null
     };
     await repo.createUser(userId, user);
 
     const profile = { userId, interests, purpose, bio, prompts, photoUrl: null, state: 'LOCKED' };
     await repo.createProfile(userId, profile);
 
-    res.status(201).json({ userId, message: '회원가입 완료' });
+    // 추천인에게 별 지급 (실패해도 가입 자체는 이미 끝났으니 조용히 로그만 남기고 진행)
+    if (referrer) {
+      try { await repo.creditStars(referrer.id, REFERRAL_REFERRER_REWARD); }
+      catch (e) { console.warn('추천인 별 지급 실패(무시하고 진행):', e.message); }
+    }
+
+    res.status(201).json({
+      userId, message: '회원가입 완료',
+      referralBonus: referrer ? REFERRAL_NEW_USER_BONUS : 0
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: '서버 오류가 발생했습니다.' });
@@ -129,6 +165,47 @@ router.get('/me/:userId', async (req, res) => {
     if (!user) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
     const profile = await repo.getProfile(req.params.userId);
     res.json({ user, profile });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
+// GET /auth/referral/:userId - 내 초대 코드 + 지금까지 초대한 친구 수 조회
+// 코드가입 이전에 만들어진 계정처럼 referralCode가 아직 없으면 이 시점에 하나 발급해서 저장(지연 생성)
+router.get('/referral/:userId', async (req, res) => {
+  try {
+    let user = await repo.getUser(req.params.userId);
+    if (!user) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+
+    if (!user.referralCode) {
+      const code = await generateUniqueReferralCode();
+      await repo.updateUser(user.id, { referralCode: code });
+      user = { ...user, referralCode: code };
+    }
+
+    const referredCount = await repo.countUsersReferredBy(user.id);
+    res.json({
+      referralCode: user.referralCode,
+      referredCount,
+      referrerReward: REFERRAL_REFERRER_REWARD,
+      newUserBonus: REFERRAL_NEW_USER_BONUS
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+});
+
+// POST /auth/fcm-token  body: { userId, token } - 푸시 알림용 FCM 등록 토큰 저장/갱신
+router.post('/fcm-token', async (req, res) => {
+  try {
+    const { userId, token } = req.body;
+    if (!userId || !token) return res.status(400).json({ error: 'userId, token은 필수입니다.' });
+    const user = await repo.getUser(userId);
+    if (!user) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+    await repo.updateUser(userId, { fcmToken: token });
+    res.json({ ok: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: '서버 오류가 발생했습니다.' });

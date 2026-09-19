@@ -145,7 +145,10 @@ function previewFeedPhoto(event) {
 
 function toggleRecruitField(checked) {
   document.getElementById('feed-place-field').style.display = checked ? 'block' : 'none';
-  if (!checked) document.getElementById('feed-place-name').value = '';
+  if (!checked) {
+    document.getElementById('feed-place-name').value = '';
+    document.getElementById('feed-capacity').value = '';
+  }
 }
 
 async function submitPost() {
@@ -154,11 +157,13 @@ async function submitPost() {
   if (!text) { toast('내용을 입력해주세요'); return; }
   const isRecruit = document.getElementById('feed-recruit-toggle').checked;
   const placeName = document.getElementById('feed-place-name').value.trim();
+  const capacityRaw = document.getElementById('feed-capacity').value.trim();
   if (isRecruit && !placeName) { toast('어디 가고 싶은지 장소를 입력해주세요'); return; }
   try {
     await api('/feed/posts', 'POST', {
       userId: state.userId, text, photoBase64: feedState.photoBase64,
-      placeName: isRecruit ? placeName : null
+      placeName: isRecruit ? placeName : null,
+      capacity: (isRecruit && capacityRaw) ? Number(capacityRaw) : null
     });
     textEl.value = '';
     feedState.photoBase64 = null;
@@ -167,6 +172,7 @@ async function submitPost() {
     document.getElementById('feed-photo-input').value = '';
     document.getElementById('feed-recruit-toggle').checked = false;
     document.getElementById('feed-place-name').value = '';
+    document.getElementById('feed-capacity').value = '';
     document.getElementById('feed-place-field').style.display = 'none';
     toast('글이 등록됐어요');
     loadFeed();
@@ -197,15 +203,24 @@ function renderPostCard(post) {
   const participants = post.participants || [];
   const joined = participants.some(p => p.userId === state.userId);
 
+  const capacity = post.capacity || null;
+  const isFull = capacity ? participants.length >= capacity : false;
+  const capacityLabel = capacity ? ` / 최대 ${capacity}명` : '';
   const recruitBlock = isRecruit ? `
       <div style="margin-top:10px; background:var(--surface-soft); border-radius:var(--radius-sm); padding:10px 12px;">
-        <div style="font-weight:800; color:var(--accent-dark); font-size:13px;">🙋 같이가요 · ${escapeHtml(post.placeName || '')}</div>
+        <div style="font-weight:800; color:var(--accent-dark); font-size:13px;">🙋 같이가요 · ${escapeHtml(post.placeName || '')}${capacityLabel}</div>
         <div class="muted" data-role="join-names" style="margin-top:4px; font-size:12px;">
           ${participants.length > 0 ? participants.map(p => escapeHtml(p.nickname)).join(', ') + '님 참여중' : '아직 참여자가 없어요'}
         </div>
-        <button class="btn ${joined ? 'btn-outline' : 'btn-primary'} btn-sm" style="margin-top:8px;"
-          data-role="join-btn" data-count="${participants.length}"
-          onclick="NRAYO.toggleJoin('${post.id}')">${joined ? '참여 취소하기' : '참여하기'} (${participants.length}명)</button>
+        <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+          <button class="btn ${joined ? 'btn-outline' : 'btn-primary'} btn-sm"
+            data-role="join-btn" data-count="${participants.length}" data-capacity="${capacity || ''}"
+            ${(!joined && isFull) ? 'disabled' : ''}
+            onclick="NRAYO.toggleJoin('${post.id}')">${joined ? '참여 취소하기' : (isFull ? '인원 마감' : '참여하기')} (${participants.length}${capacity ? '/' + capacity : ''}명)</button>
+          <button class="btn btn-ghost btn-sm" data-role="chat-btn" style="display:${joined ? 'inline-flex' : 'none'};"
+            onclick="NRAYO.toggleRoomChat('${post.id}')">💬 모임방 채팅</button>
+        </div>
+        <div id="room-chat-${post.id}" style="display:none; margin-top:10px;"></div>
       </div>` : '';
 
   return `
@@ -258,10 +273,62 @@ async function toggleJoin(postId) {
     }
     const btn = card.querySelector('[data-role="join-btn"]');
     if (btn) {
-      btn.textContent = `${joined ? '참여 취소하기' : '참여하기'} (${participants.length}명)`;
+      const capacity = Number(btn.dataset.capacity) || null;
+      const isFull = capacity ? participants.length >= capacity : false;
+      btn.textContent = `${joined ? '참여 취소하기' : (isFull ? '인원 마감' : '참여하기')} (${participants.length}${capacity ? '/' + capacity : ''}명)`;
+      btn.dataset.count = participants.length;
       btn.classList.toggle('btn-primary', !joined);
       btn.classList.toggle('btn-outline', joined);
+      btn.disabled = !joined && isFull;
     }
+    const chatBtn = card.querySelector('[data-role="chat-btn"]');
+    if (chatBtn) chatBtn.style.display = joined ? 'inline-flex' : 'none';
+    if (!joined) {
+      // 참여 취소하면 모임방 채팅 접근 권한도 없어지므로 열려있던 채팅창은 닫아줌
+      const chatBox = document.getElementById(`room-chat-${postId}`);
+      if (chatBox) chatBox.style.display = 'none';
+    }
+  } catch (e) { toast(e.message); }
+}
+
+async function toggleRoomChat(postId) {
+  const box = document.getElementById(`room-chat-${postId}`);
+  if (!box) return;
+  const isOpen = box.style.display !== 'none';
+  if (isOpen) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  await renderRoomChat(postId);
+}
+
+async function renderRoomChat(postId) {
+  const box = document.getElementById(`room-chat-${postId}`);
+  if (!box) return;
+  box.innerHTML = `<div class="muted">불러오는 중...</div>`;
+  try {
+    const data = await api(`/feed/posts/${postId}/room/messages?userId=${encodeURIComponent(state.userId)}`);
+    const messagesHtml = data.messages.map(m => `
+      <div style="padding:8px 0; border-bottom:1px solid var(--line);">
+        <div style="font-weight:700; font-size:13px;">${escapeHtml(m.nickname)}</div>
+        <div style="font-size:13px;">${escapeHtml(m.text)}</div>
+      </div>`).join('') || `<div class="muted" style="padding:6px 0;">아직 대화가 없어요. 먼저 인사해보세요!</div>`;
+    box.innerHTML = `<div class="draw-guess-feed" style="max-height:200px;">${messagesHtml}</div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <input type="text" id="room-chat-input-${postId}" placeholder="모임방에 메시지 보내기" style="flex:1;" />
+        <button class="btn btn-primary btn-sm" onclick="NRAYO.submitRoomChat('${postId}')">전송</button>
+      </div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="muted">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function submitRoomChat(postId) {
+  const input = document.getElementById(`room-chat-input-${postId}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    await api(`/feed/posts/${postId}/room/messages`, 'POST', { userId: state.userId, text });
+    await renderRoomChat(postId);
   } catch (e) { toast(e.message); }
 }
 
@@ -490,6 +557,7 @@ async function adminLogin() {
     document.getElementById('tabbar').style.display = 'flex';
     toast('관리자로 입장했어요 (별 무한)');
     loadToday();
+    registerFcmToken();
   } catch (e) {
     toast(e.message);
   }
@@ -528,6 +596,38 @@ function useCurrentLocation() {
   );
 }
 
+// ---------------- 알림(FCM) 토큰 등록 ----------------
+// VAPID 키가 설정 안 돼있거나 브라우저가 지원 안 하거나 권한을 거부해도 앱 사용에는 지장 없도록 전부 조용히 실패 처리
+let fcmForegroundHandlerRegistered = false;
+async function registerFcmToken() {
+  try {
+    if (typeof FCM_VAPID_KEY === 'undefined' || !FCM_VAPID_KEY) return; // README 안내대로 Firebase 콘솔에서 VAPID 키 발급 전이면 알림 기능 자동 비활성
+    if (!('serviceWorker' in navigator) || typeof firebase === 'undefined' || !firebase.messaging) return;
+    if (!('Notification' in window)) return;
+
+    let permission = Notification.permission;
+    if (permission === 'default') permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+
+    const swRegistration = await navigator.serviceWorker.ready;
+    const messaging = firebase.messaging();
+    const token = await messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: swRegistration });
+    if (!token || !state.userId) return;
+
+    await api('/auth/fcm-token', 'POST', { userId: state.userId, token });
+
+    if (!fcmForegroundHandlerRegistered) {
+      fcmForegroundHandlerRegistered = true;
+      messaging.onMessage((payload) => {
+        const body = (payload.notification && payload.notification.body) || '새 알림이 도착했어요';
+        toast(body);
+      });
+    }
+  } catch (e) {
+    console.warn('알림 토큰 등록 실패(무시하고 진행):', e.message);
+  }
+}
+
 // ---------------- 구글 로그인 ----------------
 // 이미 가입된 계정으로 바로 로그인 처리 (온보딩 건너뛰기)
 function enterAppAsExistingUser(userId, nickname, opts = {}) {
@@ -541,6 +641,7 @@ function enterAppAsExistingUser(userId, nickname, opts = {}) {
   document.getElementById('tabbar').style.display = 'flex';
   if (!opts.silent) toast(`${nickname}님, 다시 오셨네요!`);
   loadToday();
+  registerFcmToken();
 }
 
 // ---------------- 로그아웃 ----------------
@@ -832,6 +933,9 @@ async function signup() {
     return;
   }
 
+  const referralCodeEl = document.getElementById('ob-referral-code');
+  const referralCode = referralCodeEl ? referralCodeEl.value.trim() : '';
+
   try {
     const result = await api('/auth/signup', 'POST', {
       phone, birthYear, region, nickname, prompts,
@@ -841,7 +945,8 @@ async function signup() {
       googleEmail: obState.googleEmail,
       phoneIdToken: obState.phoneIdToken,
       interests: Array.from(state.interests),
-      purpose: Array.from(state.purpose)
+      purpose: Array.from(state.purpose),
+      referralCode: referralCode || null
     });
     state.userId = result.userId;
     state.nickname = nickname;
@@ -856,9 +961,14 @@ async function signup() {
     document.getElementById('screen-onboarding').classList.remove('active');
     document.getElementById('main-app').style.display = 'flex';
     document.getElementById('tabbar').style.display = 'flex';
-    toast('너랑요에 오신 걸 환영해요!');
+    if (result.referralBonus > 0) {
+      toast(`너랑요에 오신 걸 환영해요! 초대 보너스 별 ${result.referralBonus}개 지급 🎁`);
+    } else {
+      toast('너랑요에 오신 걸 환영해요!');
+    }
     showContactsPromptCard();
     loadToday();
+    registerFcmToken();
   } catch (e) {
     toast(e.message);
   }
@@ -1490,6 +1600,54 @@ async function loadMe() {
 
   await loadStarPackages();
   renderBoostCard(data.profile.boostedUntil);
+  renderReferralCard();
+}
+
+// ---------------- 친구 초대 (추천인 코드) ----------------
+async function renderReferralCard() {
+  const card = document.getElementById('referral-card');
+  if (!card) return;
+  try {
+    const data = await api(`/auth/referral/${state.userId}`);
+    const shareUrl = `${location.origin}${location.pathname}?ref=${data.referralCode}`;
+    card.innerHTML = `
+      <div class="muted" style="margin-bottom:8px;">친구가 내 코드로 가입하면 나는 ⭐${data.referrerReward}개, 친구는 가입 축하 ⭐${data.newUserBonus}개를 추가로 받아요.</div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div style="font-size:22px; font-weight:800; letter-spacing:2px; color:var(--accent-dark);">${data.referralCode}</div>
+        <button class="btn btn-outline btn-sm" onclick="NRAYO.copyReferralCode('${data.referralCode}')">코드 복사</button>
+      </div>
+      <button class="btn btn-premium btn-sm" style="margin-top:10px;" onclick="NRAYO.copyReferralLink('${shareUrl}')">🔗 초대 링크 복사해서 공유하기</button>
+      <div class="muted" style="margin-top:10px; font-size:12px;">지금까지 ${data.referredCount}명 초대함</div>
+    `;
+  } catch (e) {
+    card.innerHTML = `<div class="muted">초대 코드를 불러오지 못했어요.</div>`;
+  }
+}
+
+function copyToClipboardCompat(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  // 클립보드 API를 못 쓰는 환경(구형 브라우저 등)을 위한 대체 방법
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try { document.execCommand('copy'); } catch (e) { /* noop */ }
+  document.body.removeChild(textarea);
+  return Promise.resolve();
+}
+
+async function copyReferralCode(code) {
+  try { await copyToClipboardCompat(code); toast('초대 코드를 복사했어요'); }
+  catch (e) { toast('복사에 실패했어요'); }
+}
+
+async function copyReferralLink(url) {
+  try { await copyToClipboardCompat(url); toast('초대 링크를 복사했어요'); }
+  catch (e) { toast('복사에 실패했어요'); }
 }
 
 // ---------------- 카카오톡 ID 교환 (유료, 상호 동의) ----------------
@@ -1658,11 +1816,21 @@ window.NRAYO = {
   loadExtraCandidates, chargeStars, signInWithGoogle, adminLogin, buyBoost, getIcebreaker, useCurrentLocation,
   logout,
   previewFeedPhoto, submitPost, loadFeed, toggleLike, toggleComments, submitComment, deletePost, reportPost,
-  toggleRecruitField, toggleJoin,
+  toggleRecruitField, toggleJoin, toggleRoomChat, submitRoomChat,
   submitSuggestion, loadSuggestions, toggleSuggestionLike, toggleSuggestionComments, submitSuggestionComment,
   deleteSuggestion, reportSuggestion,
-  saveKakaoId, requestKakaoExchange, respondKakaoExchange
+  saveKakaoId, requestKakaoExchange, respondKakaoExchange,
+  copyReferralCode, copyReferralLink
 };
+
+// 초대 링크(?ref=코드)로 들어온 경우 온보딩 마지막 단계의 초대 코드 입력란을 미리 채워둠
+try {
+  const refFromUrl = new URLSearchParams(location.search).get('ref');
+  if (refFromUrl) {
+    const el = document.getElementById('ob-referral-code');
+    if (el) el.value = refFromUrl.trim().toUpperCase();
+  }
+} catch (e) { /* URL 파싱 실패해도 가입 자체엔 영향 없음 */ }
 
 initAutoLogin();
 window.sendFriendRequest = sendFriendRequest;
